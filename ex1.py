@@ -4,12 +4,34 @@ import utils
 
 id = ["No numbers - I'm special!"]
 
+
+class State:
+    KEY_SIZE    = "Size"
+    KEY_WALLS   = "Walls"
+    KEY_TAPS    = "Taps"
+    KEY_PLANTS  = "Plants"
+    KEY_ROBOTS  = "Robots"
+    size        = (0,0) 
+    walls       = frozenset()
+
+    @staticmethod
+    def create_initial_state(initial):
+        State.size       = initial[State.KEY_SIZE]
+        State.walls      = frozenset(initial[State.KEY_WALLS])
+
+        return State(initial[State.KEY_TAPS],
+                     initial[State.KEY_PLANTS],
+                     initial[State.KEY_ROBOTS])
+        
+    def __init__(self, taps, plants, robots):
+        self.taps       = taps
+        self.plants     = plants
+        self.robots     = robots
+
 class WateringProblem(search.Problem):
     """This class implements a pressure plate problem"""
 
     def __init__(self, initial):
-
-        
         """ Constructor only needs the initial state.
         Don't forget to set the goal or implement the goal test"""
         search.Problem.__init__(self, initial)

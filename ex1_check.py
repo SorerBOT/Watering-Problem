@@ -20,8 +20,6 @@ def run_problem(func, targs=(), kwargs=None):
 # check_problem: problem, search_method, timeout
 # timeout_exec: search_method, targs=[problem], timeout_duration=timeout
 def solve_problems(problem, algorithm):
-    
-
     try:
         p = ex1.create_watering_problem(problem)
     except Exception as e:
@@ -207,7 +205,7 @@ problem7 = {
 
 def main():
     start = time.time()
-    problem = []
+    problem = [problem1]
     for p in problem:
         for a in ['astar','gbfs']:
             solve_problems(p, a)
