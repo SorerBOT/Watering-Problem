@@ -207,7 +207,8 @@ def main():
                problem3,
                problem4]
     for p in problem:
-        for a in ['astar','gbfs']:
+        #for a in ['astar','gbfs']:
+        for a in ['astar']:
             solve_problems(p, a)
     end = time.time()
     print('Submission took:', end-start, 'seconds.')
