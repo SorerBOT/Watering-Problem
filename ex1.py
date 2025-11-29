@@ -3,7 +3,8 @@ import search
 import utils
 
 id = ["No numbers - I'm special!"]
-# my mnamem is
+# test
+#asdasdasdasd
 
 KEY_SIZE    = "Size"
 KEY_WALLS   = "Walls"
