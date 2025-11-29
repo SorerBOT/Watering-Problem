@@ -202,7 +202,7 @@ problem7 = {
 
 def main():
     start = time.time()
-    problem = [problem1, problem2]
+    problem = [problem1, problem2, problem3, problem4]
     for p in problem:
         #for a in ['astar','gbfs']:
         for a in ['astar']:

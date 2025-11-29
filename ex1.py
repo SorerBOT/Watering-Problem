@@ -3,8 +3,6 @@ import search
 import utils
 
 id = ["No numbers - I'm special!"]
-# test
-#asdasdasdasd
 
 KEY_SIZE    = "Size"
 KEY_WALLS   = "Walls"
@@ -19,7 +17,6 @@ class State:
     plants:         dict[tuple[int, int], int]
     robots:         dict[tuple[int, int], tuple[str, int, int]]
     last_actions:   list[tuple[str, str]]
-    last_states:    list[int]
 
     @staticmethod
     def create_initial_state(initial):
@@ -34,13 +31,11 @@ class State:
                     _taps: dict[tuple, int],
                     _plants: dict[tuple, int],
                     _robots: dict[tuple, tuple],
-                    _last_actions: list[tuple[str, str]] = [],
-                    _last_states: list[int] = []):
+                    _last_actions: list[tuple[str, str]] = []):
         self.taps           = dict(_taps)
         self.plants         = dict(_plants)
         self.robots         = dict(_robots)
         self.last_actions   = list(_last_actions)
-        self.last_states    = list(_last_states)
 
     def __str__(self):
         str_size            = f"Grid dimensions: {State.size}"
@@ -58,6 +53,7 @@ class State:
             tuple(sorted(self.plants.items())),
             tuple(sorted(self.robots.items())),
             ))
+
     def __eq__(self, other):
         return (
             self.walls  == other.walls  and
@@ -65,17 +61,15 @@ class State:
             self.plants == other.plants and
             self.robots == other.robots)
 
-def last_actions_append(last_actions: list[tuple[str, str]],
-                 action: tuple[str, str]):
-   (action_name, action_robot_id) = action
-   last_actions.append((action_name, action_robot_id))
+def list_append[T](last_actions: list[T],
+                 action: T):
+   last_actions.append(action)
 
-def last_actions_replace(last_actions: list[tuple[str, str]],
-                   action: tuple[str, str]):
-   (action_name, action_robot_id) = action
-   last_actions[:] = [(action_name, action_robot_id)]
+def list_replace[T](last_actions: list[T],
+                   action: T):
+   last_actions[:] = [action]
 
-last_actions_update = last_actions_replace
+last_actions_update = list_replace
 
 class WateringProblem(search.Problem):
     """This class implements a pressure plate problem"""
