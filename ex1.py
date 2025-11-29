@@ -5,6 +5,7 @@ import utils
 id = ["No numbers - I'm special!"]
 # test
 #asdasdasdasd
+
 KEY_SIZE    = "Size"
 KEY_WALLS   = "Walls"
 KEY_TAPS    = "Taps"
