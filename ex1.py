@@ -134,10 +134,10 @@ class WateringProblem(search.Problem):
                         state_new               = State(state,
                                                     _plants = state_new_plants,
                                                     _robots = state_new_robots)
-
-                        moves.append((f"POUR{{{id}}}", state_new))
-                        if len(state.robots) == 1:
-                            continue
+                        if self.heuristics_cache.get(state_new, None) is None:
+                            moves.append((f"POUR{{{id}}}", state_new))
+                            if len(state.robots) == 1:
+                                continue
 
             remaining_capacity = capacity - load
             if remaining_capacity > 0:
@@ -151,36 +151,41 @@ class WateringProblem(search.Problem):
                                                 _robots = state_new_robots,
                                                 _taps   = state_new_taps)
 
-                        moves.append((f"LOAD{{{id}}}", state_new))
-                        if len(state.robots) == 1:
-                            continue
+                        if self.heuristics_cache.get(state_new, None) is None:
+                            moves.append((f"LOAD{{{id}}}", state_new))
+                            if len(state.robots) == 1:
+                                continue
             if is_move_legal(i+1, j):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple)
 
-                moves.append((f"DOWN{{{id}}}", state_new))
+                if self.heuristics_cache.get(state_new, None) is None:
+                    moves.append((f"DOWN{{{id}}}", state_new))
 
             if is_move_legal(i-1, j):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple)
 
-                moves.append((f"UP{{{id}}}", state_new))
+                if self.heuristics_cache.get(state_new, None) is None:
+                    moves.append((f"UP{{{id}}}", state_new))
 
             if is_move_legal(i, j+1):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple)
 
-                moves.append((f"RIGHT{{{id}}}", state_new))
+                if self.heuristics_cache.get(state_new, None) is None:
+                    moves.append((f"RIGHT{{{id}}}", state_new))
 
             if is_move_legal(i, j-1):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple)
 
-                moves.append((f"LEFT{{{id}}}", state_new))
+                if self.heuristics_cache.get(state_new, None) is None:
+                    moves.append((f"LEFT{{{id}}}", state_new))
 
         return moves
 
@@ -192,9 +197,9 @@ class WateringProblem(search.Problem):
         """ This is the heuristic. It gets a node (not a state)
         and returns a goal distance estimate"""
 
-        cached_result = self.heuristics_cache.get(node.state, None)
-        if cached_result is not None:
-                return cached_result
+        # cached_result = self.heuristics_cache.get(node.state, None)
+        # if cached_result is not None:
+        #         return cached_result
 
         total_load                              = 0
         non_satiated_plants_cords               = [plant_cords  for plant_cords     in self.plant_cords_list    if node.state.plants[self.map[plant_cords][1]] > 0]
