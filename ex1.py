@@ -37,6 +37,7 @@ class State:
                 _taps       : dict[tuple, int]      | None  = None,
                 _plants     : dict[tuple, int]      | None  = None,
                 _robots     : dict[tuple, tuple]    | None  = None):
+
         if _old_state is not None:
             self.taps       = _old_state.taps
             self.plants     = _old_state.plants
