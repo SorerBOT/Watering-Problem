@@ -21,7 +21,10 @@ class State:
     plants:                     dict[tuple[int, int], int]
     robots:                     dict[tuple[int, int], tuple[str, int, int]]
     last_action:                str | None
-    __hash:                     int | None
+    __taps_hash:                int
+    __plants_hash:              int
+    __robots_hash:              int
+    __hash:                     int
 
     @staticmethod
     def create_initial_state(initial):
@@ -42,19 +45,26 @@ class State:
                 _robots         : dict[tuple, tuple]    | None  = None):
 
         if _old_state is not None:
-            self.taps       = _old_state.taps
-            self.plants     = _old_state.plants
-            self.robots     = _old_state.robots
+            self.taps           = _old_state.taps
+            self.plants         = _old_state.plants
+            self.robots         = _old_state.robots
+
+            self.__taps_hash    = _old_state.__taps_hash
+            self.__plants_hash  = _old_state.__plants_hash
+            self.__robots_hash  = _old_state.__robots_hash
 
         if _taps is not None:
             self.taps           = dict(_taps)
+            self.__taps_hash    = hash(tuple(sorted(self.taps.items())))
         if _plants is not None:
             self.plants         = dict(_plants)
+            self.__plants_hash    = hash(tuple(sorted(self.plants.items())))
         if _robots is not None:
             self.robots         = dict(_robots)
+            self.__robots_hash  = hash(tuple(sorted(self.robots.items())))
 
-        self.last_action    = _last_action
-        self.__hash         = None
+        self.last_action        = _last_action
+        self.__hash             = hash((self.__taps_hash, self.__plants_hash, self.__robots_hash))
 
     def __str__(self):
         str_size                = f"Grid dimensions: {State.size}"
