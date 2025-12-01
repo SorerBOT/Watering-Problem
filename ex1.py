@@ -15,12 +15,13 @@ def distance(cords_1: tuple[int, int], cords_2: tuple[int, int]):
     return abs(cords_1[0] - cords_2[0]) + abs(cords_1[1] - cords_2[1])
 
 class State:
-    size:           tuple[int, int]
-    walls:          dict[tuple[int, int], bool]
-    taps:           dict[tuple[int, int], int]
-    plants:         dict[tuple[int, int], int]
-    robots:         dict[tuple[int, int], tuple[str, int, int]]
-    __hash:         int | None
+    size:                       tuple[int, int]
+    walls:                      dict[tuple[int, int], bool]
+    taps:                       dict[tuple[int, int], int]
+    plants:                     dict[tuple[int, int], int]
+    robots:                     dict[tuple[int, int], tuple[str, int, int]]
+    last_action:                str | None
+    __hash:                     int | None
 
     @staticmethod
     def create_initial_state(initial):
@@ -29,15 +30,16 @@ class State:
         _robots         = dict(((i,j), (str(id), load, capacity)) for id, (i, j, load, capacity) in initial[KEY_ROBOTS].items())
 
         return State(None,
+                     None,
                      initial[KEY_TAPS],
                      initial[KEY_PLANTS],
                      _robots)
     def __init__(self,
-                _old_state                                  = None,
-                _taps       : dict[tuple, int]      | None  = None,
-                _plants     : dict[tuple, int]      | None  = None,
-                _robots     : dict[tuple, tuple]    | None  = None,
-                ):
+                _old_state                                      = None,
+                _last_action    : str                   | None  = None,
+                _taps           : dict[tuple, int]      | None  = None,
+                _plants         : dict[tuple, int]      | None  = None,
+                _robots         : dict[tuple, tuple]    | None  = None):
 
         if _old_state is not None:
             self.taps       = _old_state.taps
@@ -50,6 +52,8 @@ class State:
             self.plants         = dict(_plants)
         if _robots is not None:
             self.robots         = dict(_robots)
+
+        self.last_action    = _last_action
         self.__hash         = None
 
     def __str__(self):
@@ -128,8 +132,8 @@ class WateringProblem(search.Problem):
 
                     if self.heuristics_cache.get(state_new, None) is None:
                         moves.append((f"POUR{{{id}}}", state_new))
-                    if len(state.robots.items()) == 1:
-                        continue
+                        if len(state.robots.items()) == 1:
+                            continue
 
             remaining_capacity = capacity - load
             if (remaining_capacity > 0):
@@ -148,40 +152,42 @@ class WateringProblem(search.Problem):
 
                     if self.heuristics_cache.get(state_new, None) is None:
                         moves.append((f"LOAD{{{id}}}", state_new))
-                    if len(state.robots.items()) == 1 and load <= sum(state.plants.values()):
-                        continue
-            if is_move_legal(i+1, j):
+                        if len(state.robots.items()) == 1 and load <= sum(state.plants.values()):
+                            continue
+            if is_move_legal(i+1, j) and state.last_action != f"UP{{{id}}}":
                 state_new_robots = dict(state.robots)
                 del state_new_robots[old_robot_key]
                 state_new_robots[generate_robot_key(id, i+1, j, load, capacity)] = generate_robot(id, i+1, j, load, capacity)
-                state_new       = State(state, _robots = state_new_robots)
+                action_name = f"DOWN{{{id}}}"
+                state_new       = State(state, _last_action = action_name, _robots = state_new_robots)
 
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((f"DOWN{{{id}}}", state_new))
+                    moves.append((action_name, state_new))
 
-            if is_move_legal(i-1, j):
+            if is_move_legal(i-1, j) and state.last_action != f"DOWN{{{id}}}":
                 state_new_robots    = dict(state.robots)
                 del state_new_robots[old_robot_key]
                 state_new_robots[generate_robot_key(id, i-1, j, load, capacity)] = generate_robot(id, i-1, j, load, capacity)
-                state_new           = State(state, _robots = state_new_robots)
-
+                action_name = f"UP{{{id}}}"
+                state_new           = State(state, _last_action = action_name,_robots = state_new_robots)
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((f"UP{{{id}}}", state_new))
+                    moves.append((action_name, state_new))
 
-            if is_move_legal(i, j+1):
+            if is_move_legal(i, j+1) and state.last_action != f"LEFT{{{id}}}":
                 state_new_robots    = dict(state.robots)
                 del state_new_robots[old_robot_key]
                 state_new_robots[generate_robot_key(id, i, j+1, load, capacity)] = generate_robot(id, i, j+1, load, capacity)
-                state_new           = State(state, _robots = state_new_robots)
-
+                action_name         = f"RIGHT{{{id}}}"
+                state_new           = State(state, _last_action = action_name, _robots = state_new_robots)
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((f"RIGHT{{{id}}}", state_new))
+                    moves.append((action_name, state_new))
 
-            if is_move_legal(i, j-1):
+            if is_move_legal(i, j-1) and state.last_action != f"RIGHT{{{id}}}":
                 state_new_robots    = dict(state.robots)
                 del state_new_robots[old_robot_key]
                 state_new_robots[generate_robot_key(id, i, j-1, load, capacity)] = generate_robot(id, i, j-1, load, capacity)
-                state_new           = State(state, _robots = state_new_robots)
+                action_name         = f"LEFT{{{id}}}"
+                state_new           = State(state, _last_action = action_name, _robots = state_new_robots)
 
                 if self.heuristics_cache.get(state_new, None) is None:
                     moves.append((f"LEFT{{{id}}}", state_new))
@@ -228,7 +234,7 @@ class WateringProblem(search.Problem):
             min_robot_contribution_distance          = min(min_robot_contribution_distance, current_robot_contribution_distance)
             total_load                      += load
 
-        total_water_available           = sum(node.state.plants.values())
+        total_water_available           = sum(node.state.taps.values())
         total_plant_water_needed        = sum(node.state.plants.values())
         heuristic                       = 2 * total_plant_water_needed - total_load
 
