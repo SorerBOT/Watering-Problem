@@ -10,9 +10,6 @@ KEY_TAPS    = "Taps"
 KEY_PLANTS  = "Plants"
 KEY_ROBOTS  = "Robots"
 
-def distance(cords_1: tuple[int, int], cords_2: tuple[int, int]):
-    return abs(cords_1[0] - cords_2[0]) + abs(cords_1[1] - cords_2[1])
-
 class State:
     taps:                   tuple[int]
     plants:                 tuple[int]
@@ -95,6 +92,7 @@ class WateringProblem(search.Problem):
     map:                dict[tuple[int, int], tuple[str, int]]
     plant_cords_list:   list[tuple[int, int]]
     tap_cords_list:     list[tuple[int, int]]
+    bfs_distances:      dict[tuple[ tuple[int, int], tuple[int, int] ], int]
 
     def __init__(self, initial):
         """ Constructor only needs the initial state.
@@ -128,6 +126,43 @@ class WateringProblem(search.Problem):
                                             _robot_cords        = robot_cords,
                                             _robot_cords_tuple  = robot_cords_tuple,
                                             _robots             = robots)
+        self.bfs_distances          = {}
+        for cords in self.tap_cords_list:
+            self.bfs(cords)
+        for cords in self.plant_cords_list:
+            self.bfs(cords)
+
+    def bfs(self, src_cords: tuple[int, int]): 
+        """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
+        visited_nodes: set[tuple[int, int]] = { src_cords }
+        queue: utils.FIFOQueue              = utils.FIFOQueue()
+
+        queue.append((src_cords, 0))
+
+        (height, width) = self.size
+        is_position_legal = lambda i,j: (
+                (0 <= i < height)
+                and (0 <= j < width)
+                and self.map.get((i,j), (None, -1))[0] != "wall")
+
+        self.bfs_distances[(src_cords, src_cords)] = 0
+        possible_actions = [(1, 0), (-1,0), (0,1), (0,-1)]
+
+        while (len(queue) > 0):
+            (node_i, node_j), cost = queue.pop()
+            for (d_i, d_j) in possible_actions:
+                if (is_position_legal(node_i + d_i, node_j + d_j)
+                    and not (node_i + d_i, node_j + d_j) in visited_nodes):
+
+                    queue.append(((node_i + d_i, node_j + d_j), cost + 1))
+                    self.bfs_distances[(src_cords, (node_i + d_i, node_j + d_j))] = cost + 1
+                    visited_nodes.add((node_i + d_i, node_j + d_j))
+
+    def distance(self, cords_1: tuple[int, int], cords_2: tuple[int, int]):
+        dist = self.bfs_distances.get((cords_1, cords_2), None)
+        if dist is None: # this either means that the destination was unreachable, or that the function was not used properly
+            return float('inf')
+        return dist 
 
     def successor(self, state: State):
         """ Generates the successor states returns [(action, achieved_states, ...)]"""
@@ -238,12 +273,12 @@ class WateringProblem(search.Problem):
             if load == 0:
                 if non_empty_tap_cords:
                     current_robot_contribution_distance  = min(
-                        distance(robot_cords, tap_cords) + distance(tap_cords, plant_cords)
+                        self.distance(tap_cords, robot_cords) + self.distance(tap_cords, plant_cords)
                         for tap_cords in non_empty_tap_cords
                         for plant_cords in non_satiated_plants_cords)
             else:
                 current_robot_contribution_distance  = min(
-                        distance(robot_cords, plant_cords)
+                        self.distance(plant_cords, robot_cords)
                         for plant_cords in non_satiated_plants_cords)
             min_robot_contribution_distance          = min(min_robot_contribution_distance, current_robot_contribution_distance)
 
