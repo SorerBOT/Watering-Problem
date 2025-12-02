@@ -55,13 +55,13 @@ class State:
 
         if _taps is not None:
             self.taps           = dict(_taps)
-            self.__taps_hash    = hash(tuple(sorted(self.taps.items())))
+            self.__taps_hash    = hash(frozenset(self.taps.items()))
         if _plants is not None:
             self.plants         = dict(_plants)
-            self.__plants_hash    = hash(tuple(sorted(self.plants.items())))
+            self.__plants_hash    = hash(frozenset(self.plants.items()))
         if _robots is not None:
             self.robots         = dict(_robots)
-            self.__robots_hash  = hash(tuple(sorted(self.robots.items())))
+            self.__robots_hash  = hash(frozenset(self.robots.items()))
 
         self.last_action        = _last_action
         self.__hash             = hash((self.__taps_hash, self.__plants_hash, self.__robots_hash))
@@ -76,14 +76,6 @@ class State:
         return f"{str_size}\n{str_walls}\n{str_taps}\n{str_plants}\n{str_robots}"
 
     def __hash__(self):
-        if self.__hash:
-            return self.__hash
-        else:
-            self.__hash = hash((
-                tuple(sorted(self.taps.items())),
-                tuple(sorted(self.plants.items())),
-                tuple(sorted(self.robots.items())),
-                ))
         return self.__hash
 
     def __eq__(self, other):
@@ -126,7 +118,6 @@ class WateringProblem(search.Problem):
 
         for (i,j), (id, load, capacity) in state.robots.items():
             old_robot_key           = generate_robot_key(id, i, j, load, capacity)
-
             if (load > 0):
                 plant_water_needed = state.plants.get((i,j), 0)
                 if plant_water_needed > 0:
@@ -141,9 +132,10 @@ class WateringProblem(search.Problem):
                                                 _robots = state_new_robots)
 
                     if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((f"POUR{{{id}}}", state_new))
-                        if len(state.robots.items()) == 1:
-                            continue
+                        if not math.isinf(self.h_astar_state(state_new)):
+                            moves.append((f"POUR{{{id}}}", state_new))
+                            if len(state.robots.items()) == 1:
+                                continue
 
             remaining_capacity = capacity - load
             if (remaining_capacity > 0):
@@ -161,9 +153,10 @@ class WateringProblem(search.Problem):
                                     _taps   = state_new_taps)
 
                     if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((f"LOAD{{{id}}}", state_new))
-                        if len(state.robots.items()) == 1 and load <= sum(state.plants.values()):
-                            continue
+                        if not math.isinf(self.h_astar_state(state_new)):
+                            moves.append((f"LOAD{{{id}}}", state_new))
+                            if len(state.robots.items()) == 1 and load <= sum(state.plants.values()):
+                                continue
             if is_move_legal(i+1, j) and state.last_action != f"UP{{{id}}}":
                 state_new_robots = dict(state.robots)
                 del state_new_robots[old_robot_key]
@@ -172,7 +165,8 @@ class WateringProblem(search.Problem):
                 state_new       = State(state, _last_action = action_name, _robots = state_new_robots)
 
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if not math.isinf(self.h_astar_state(state_new)):
+                        moves.append((action_name, state_new))
 
             if is_move_legal(i-1, j) and state.last_action != f"DOWN{{{id}}}":
                 state_new_robots    = dict(state.robots)
@@ -181,7 +175,8 @@ class WateringProblem(search.Problem):
                 action_name = f"UP{{{id}}}"
                 state_new           = State(state, _last_action = action_name,_robots = state_new_robots)
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if not math.isinf(self.h_astar_state(state_new)):
+                        moves.append((action_name, state_new))
 
             if is_move_legal(i, j+1) and state.last_action != f"LEFT{{{id}}}":
                 state_new_robots    = dict(state.robots)
@@ -190,7 +185,8 @@ class WateringProblem(search.Problem):
                 action_name         = f"RIGHT{{{id}}}"
                 state_new           = State(state, _last_action = action_name, _robots = state_new_robots)
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if not math.isinf(self.h_astar_state(state_new)):
+                        moves.append((action_name, state_new))
 
             if is_move_legal(i, j-1) and state.last_action != f"RIGHT{{{id}}}":
                 state_new_robots    = dict(state.robots)
@@ -200,36 +196,23 @@ class WateringProblem(search.Problem):
                 state_new           = State(state, _last_action = action_name, _robots = state_new_robots)
 
                 if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((f"LEFT{{{id}}}", state_new))
+                    if not math.isinf(self.h_astar_state(state_new)):
+                        moves.append((f"LEFT{{{id}}}", state_new))
 
         return moves
 
-    def goal_test(self, state: State):
-        """ given a state, checks if this is the goal state, compares to the created goal state returns True/False"""
-        return all(not v for v in state.plants.values())
-
-    def h_astar(self, node):
+    def h_astar_state(self, state):
         """ This is the heuristic. It gets a node (not a state)
         and returns a goal distance estimate"""
-
-        # Now checking whether states are in the cache before appending them to the possible moves list
-
-        # cached_result = self.heuristics_cache.get(node.state, None)
-        # if cached_result is not None:
-        #         self.cache_hits         += 1
-        #         return cached_result
-        # else:
-        #         self.cache_misses       += 1
-
         total_load                              = 0
-        non_satiated_plants_cords               = [plant_cords  for plant_cords, plant_water_needed in node.state.plants.items()    if plant_water_needed > 0]
-        non_empty_tap_cords                     = [tap_cords    for tap_cords, water_available      in node.state.taps.items()      if water_available > 0]
+        non_satiated_plants_cords               = [plant_cords  for plant_cords, plant_water_needed in state.plants.items()    if plant_water_needed > 0]
+        non_empty_tap_cords                     = [tap_cords    for tap_cords, water_available      in state.taps.items()      if water_available > 0]
 
         if not non_satiated_plants_cords:
             return 0
 
         min_robot_contribution_distance         = float('inf')
-        for robot_cords, (id, load, capacity) in node.state.robots.items():
+        for robot_cords, (id, load, capacity) in state.robots.items():
             current_robot_contribution_distance = float('inf')
             if load == 0:
                 if non_empty_tap_cords:
@@ -244,8 +227,8 @@ class WateringProblem(search.Problem):
             min_robot_contribution_distance          = min(min_robot_contribution_distance, current_robot_contribution_distance)
             total_load                      += load
 
-        total_water_available           = sum(node.state.taps.values())
-        total_plant_water_needed        = sum(node.state.plants.values())
+        total_water_available           = sum(state.taps.values())
+        total_plant_water_needed        = sum(state.plants.values())
         heuristic                       = 2 * total_plant_water_needed - total_load
 
         if total_water_available + total_load < total_plant_water_needed:
@@ -253,7 +236,60 @@ class WateringProblem(search.Problem):
         else:
             heuristic += min_robot_contribution_distance
 
-        self.heuristics_cache[node.state] = heuristic
+        self.heuristics_cache[state] = heuristic
+        return heuristic
+    def goal_test(self, state: State):
+        """ given a state, checks if this is the goal state, compares to the created goal state returns True/False"""
+        return all(not v for v in state.plants.values())
+
+    def h_astar(self, node):
+        return self.h_astar_state(node.state)
+    def h_astar_state(self, state):
+        """ This is the heuristic. It gets a node (not a state)
+        and returns a goal distance estimate"""
+
+        # Now checking whether states are in the cache before appending them to the possible moves list
+
+        # cached_result = self.heuristics_cache.get(state, None)
+        # if cached_result is not None:
+        #         self.cache_hits         += 1
+        #         return cached_result
+        # else:
+        #         self.cache_misses       += 1
+
+        total_load                              = 0
+        non_satiated_plants_cords               = [plant_cords  for plant_cords, plant_water_needed in state.plants.items()    if plant_water_needed > 0]
+        non_empty_tap_cords                     = [tap_cords    for tap_cords, water_available      in state.taps.items()      if water_available > 0]
+
+        if not non_satiated_plants_cords:
+            return 0
+
+        min_robot_contribution_distance         = float('inf')
+        for robot_cords, (id, load, capacity) in state.robots.items():
+            current_robot_contribution_distance = float('inf')
+            if load == 0:
+                if non_empty_tap_cords:
+                    current_robot_contribution_distance  = min(
+                        distance(robot_cords, tap_cords) + distance(tap_cords, plant_cords)
+                        for tap_cords in non_empty_tap_cords
+                        for plant_cords in non_satiated_plants_cords)
+            else:
+                current_robot_contribution_distance  = min(
+                        distance(robot_cords, plant_cords)
+                        for plant_cords in non_satiated_plants_cords)
+            min_robot_contribution_distance          = min(min_robot_contribution_distance, current_robot_contribution_distance)
+            total_load                      += load
+
+        total_water_available           = sum(state.taps.values())
+        total_plant_water_needed        = sum(state.plants.values())
+        heuristic                       = 2 * total_plant_water_needed - total_load
+
+        if total_water_available + total_load < total_plant_water_needed:
+            return float('inf')
+        else:
+            heuristic += min_robot_contribution_distance
+
+        self.heuristics_cache[state] = heuristic
         return heuristic
 
 
