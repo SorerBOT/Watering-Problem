@@ -113,6 +113,7 @@ class WateringProblem(search.Problem):
     plant_cords_list:   list[tuple[int, int]]
     tap_cords_list:     list[tuple[int, int]]
     bfs_distances:      dict[tuple[ tuple[int, int], tuple[int, int] ], int]
+    bfs_to_whatever_plant_distances:      dict[tuple[int, int], int]
 
     def __init__(self, initial):
         """ Constructor only needs the initial state.
@@ -152,18 +153,21 @@ class WateringProblem(search.Problem):
                                             _robots             = robots,
                                             _non_empty_tap_cords     = non_empty_taps,
                                             _non_satiated_plants_cords = non_satiated_plants_cords)
-        self.bfs_distances          = {}
+        self.bfs_distances                      = {}
+        self.bfs_to_whatever_plant_distances    = {}
         for cords in self.tap_cords_list:
-            self.bfs(cords)
+            self.bfs([cords])
         for cords in self.plant_cords_list:
-            self.bfs(cords)
+            self.bfs([cords])
+        self.bfs_to_any(self.plant_cords_list)
 
-    def bfs(self, src_cords: tuple[int, int]): 
+
+    def bfs_to_any(self, src_cords: list[tuple[int, int]]): # this would get us the distances between certain coordinates and WHATEVER plant
         """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
-        visited_nodes: set[tuple[int, int]] = { src_cords }
+        visited_nodes: set[tuple[int, int]] = set(src_cords) 
         queue: utils.FIFOQueue              = utils.FIFOQueue()
 
-        queue.append((src_cords, 0))
+        queue.extend((cords, 0) for cords in src_cords)
 
         (height, width) = self.size
         is_position_legal = lambda i,j: (
@@ -171,7 +175,8 @@ class WateringProblem(search.Problem):
                 and (0 <= j < width)
                 and self.map.get((i,j), (None, -1))[0] != "wall")
 
-        self.bfs_distances[(src_cords, src_cords)] = 0
+        for cords in src_cords:
+            self.bfs_to_whatever_plant_distances[cords] = 0
         possible_actions = [(0,-1), (0,1), (-1, 0), (1,0)]
 
         while (len(queue) > 0):
@@ -181,8 +186,42 @@ class WateringProblem(search.Problem):
                     and not (node_i + d_i, node_j + d_j) in visited_nodes):
 
                     queue.append(((node_i + d_i, node_j + d_j), cost + 1))
-                    self.bfs_distances[(src_cords, (node_i + d_i, node_j + d_j))] = cost + 1
+                    self.bfs_to_whatever_plant_distances[(node_i + d_i, node_j + d_j)] = cost + 1
                     visited_nodes.add((node_i + d_i, node_j + d_j))
+
+    def bfs(self, src_cords: list[tuple[int, int]]): # accepts a list, as we may have several src points (all plants to whatever taps, but single tap to whatever point)
+        """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
+        visited_nodes: set[tuple[int, int]] = set(src_cords) 
+        queue: utils.FIFOQueue              = utils.FIFOQueue()
+
+        queue.extend((cords, 0) for cords in src_cords)
+
+        (height, width) = self.size
+        is_position_legal = lambda i,j: (
+                (0 <= i < height)
+                and (0 <= j < width)
+                and self.map.get((i,j), (None, -1))[0] != "wall")
+
+        for cords in src_cords:
+            self.bfs_distances[(cords, cords)] = 0
+        possible_actions = [(0,-1), (0,1), (-1, 0), (1,0)]
+
+        while (len(queue) > 0):
+            (node_i, node_j), cost = queue.pop()
+            for (d_i, d_j) in possible_actions:
+                if (is_position_legal(node_i + d_i, node_j + d_j)
+                    and not (node_i + d_i, node_j + d_j) in visited_nodes):
+
+                    queue.append(((node_i + d_i, node_j + d_j), cost + 1))
+                    for cords in src_cords:
+                        self.bfs_distances[(cords, (node_i + d_i, node_j + d_j))] = cost + 1
+                    visited_nodes.add((node_i + d_i, node_j + d_j))
+
+    def distance_nearest_plant(self, cords):
+        dist = self.bfs_to_whatever_plant_distances.get(cords, None)
+        if dist is None: # this either means that the destination was unreachable, or that the function was not used properly
+            return float('inf')
+        return dist
 
     def distance(self, cords_1: tuple[int, int], cords_2: tuple[int, int]):
         dist = self.bfs_distances.get((cords_1, cords_2), None)
@@ -313,26 +352,23 @@ class WateringProblem(search.Problem):
             if load == 0:
                 if node.state.non_empty_tap_cords:
                     distance_tap_then_plant = min(
-                        self.distance(tap_cords, robot_cords) + self.distance(tap_cords, plant_cords)
-                        for tap_cords in node.state.non_empty_tap_cords
-                        for plant_cords in node.state.non_satiated_plants_cords)
+                        self.distance(tap_cords, robot_cords) + self.distance_nearest_plant(tap_cords)
+                        for tap_cords in node.state.non_empty_tap_cords)
                     current_robot_contribution_distance = distance_tap_then_plant
             else:
                 if total_load < total_plant_water_needed:
                     if not distance_tap_then_plant:
                         distance_tap_then_plant = min(
-                                self.distance(tap_cords, robot_cords) + self.distance(tap_cords, plant_cords)
-                                for tap_cords in node.state.non_empty_tap_cords
-                                for plant_cords in node.state.non_satiated_plants_cords)
+                        self.distance(tap_cords, robot_cords) + self.distance_nearest_plant(tap_cords)
+                        for tap_cords in node.state.non_empty_tap_cords)
+
                     current_robot_contribution_distance  = min(
                             self.distance(plant_cords, robot_cords) + self.distance(plant_cords, tap_cords) # for some reason calculating the distance for the second plant makes it slower
-                            for plant_cords in node.state.non_satiated_plants_cords
-                            for tap_cords   in node.state.non_empty_tap_cords)
+                            for tap_cords       in node.state.non_empty_tap_cords
+                            for plant_cords     in node.state.non_satiated_plants_cords)
                     current_robot_contribution_distance = min(distance_tap_then_plant, current_robot_contribution_distance)
                 else:
-                    current_robot_contribution_distance  = min(
-                            self.distance(plant_cords, robot_cords)
-                            for plant_cords in node.state.non_satiated_plants_cords)
+                    current_robot_contribution_distance  = self.distance_nearest_plant(robot_cords)
             min_robot_contribution_distance          = min(min_robot_contribution_distance, current_robot_contribution_distance)
 
         heuristic                       = 2 * total_plant_water_needed - total_load
