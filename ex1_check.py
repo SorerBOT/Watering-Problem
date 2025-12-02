@@ -513,7 +513,7 @@ def main():
                 print(f"Solved {problem_name} GBFS. {len} steps solution (instead of {expected_len}) was found in {algorithm_time_end - algorithm_time_start} seconds")
         i += 1
     print("------------------------------------------")
-    print(f"Final Result: {"SOME FAILED" if is_failed else "ALL PASSED"}")
+    print(f"Final Result: {'SOME FAILED' if is_failed else 'ALL PASSED'}")
     end = time.time()
     print('Submission took:', end-start, 'seconds.')
 
