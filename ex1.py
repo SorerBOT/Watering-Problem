@@ -32,7 +32,7 @@ class State:
     __hash_robots:          int
     __hash_robot_cords_tuple: int
 
-    last_action:            str | None
+    robot_last_actions:           tuple[str] 
 
     def __init__(self,
                 _old_state                                                  = None,
@@ -46,7 +46,7 @@ class State:
                 _total_load:             int | None = None,
                 _non_satiated_plants_cords:  list[tuple[int, int]] | None = None,
                 _non_empty_tap_cords:        list[tuple[int, int]] | None = None,
-                _last_action: str | None = None):
+                _robot_last_actions: tuple[str] | None = None):
 
         if _old_state is not None:
             self.taps                       = _old_state.taps
@@ -95,7 +95,7 @@ class State:
             self.__hash_robots  = hash(self.robots)
             self.total_load     = _total_load if _total_load is not None else sum(load for (id, load, capacity) in _robots)
 
-        self.last_action = _last_action
+        self.robot_last_actions = _robot_last_actions
 
         self.__hash = hash((self.__hash_taps, self.__hash_plants, self.__hash_robots,  self.__hash_robot_cords_tuple))
 
@@ -151,13 +151,15 @@ class WateringProblem(search.Problem):
         plants                      = tuple(plant_values)
         non_empty_taps              = [tap_cords    for tap_cords       in self.tap_cords_list      if taps[self.map[tap_cords][1]] > 0]
         non_satiated_plants_cords   = [plant_cords  for plant_cords     in self.plant_cords_list    if plants[self.map[plant_cords][1]] > 0]
+        robot_last_actions          = ("",) * len(robots)
         self.initial                = State(_taps               = tuple(tap_values),
                                             _plants             = tuple(plant_values),
                                             _robot_cords        = robot_cords,
                                             _robot_cords_tuple  = robot_cords_tuple,
                                             _robots             = robots,
                                             _non_empty_tap_cords     = non_empty_taps,
-                                            _non_satiated_plants_cords = non_satiated_plants_cords)
+                                            _non_satiated_plants_cords = non_satiated_plants_cords,
+                                            _robot_last_actions = robot_last_actions)
         self.bfs_distances                      = {}
         self.bfs_to_whatever_plant_distances    = {}
         for cords in self.tap_cords_list:
@@ -249,65 +251,68 @@ class WateringProblem(search.Problem):
 
         for index, (id, load, capacity) in enumerate(state.robots):
             (i,j) = state.robot_cords_tuple[index]
+            entity_res          = None
 
             if load > 0:
-                (entity_type, entity_index) = self.map.get((i,j), (None, -1))
+                (entity_type, entity_index) = entity_res = self.map.get((i,j), (None, -1))
                 if entity_type == "plant":
                     plant_water_needed = state.plants[entity_index]
                     if plant_water_needed > 0:
                         state_new_robots        = tuple_replace(state.robots, index, (id, load - 1, capacity))
                         state_new_plants        = tuple_replace(state.plants, entity_index, plant_water_needed - 1)
-
+                        action_name             = f"POUR{{{id}}}"
+                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
                         non_satiated_plants_cords       = None
                         if plant_water_needed == 1:
                             non_satiated_plants_cords   = [plant_cords  for plant_cords     in self.plant_cords_list    if state_new_plants[self.map[plant_cords][1]] > 0]
 
-                        action_name = f"POUR{{{id}}}"
                         state_new               = State(state,
                                                     _plants = state_new_plants,
                                                     _robots = state_new_robots,
                                                     _total_load = state.total_load - 1,
                                                     _total_plant_water_needed = state.total_plant_water_needed - 1,
                                                     _non_satiated_plants_cords = non_satiated_plants_cords,
-                                                    _last_action = action_name)
+                                                    _robot_last_actions = state_new_last_actions)
                         if self.heuristics_cache.get(state_new, None) is None:
                             moves.append((action_name, state_new))
-                            if len(state.robots) == 1 or len(state.non_satiated_plants_cords) == 1:
+                            if len(state.robots) == 1 or len(state.non_satiated_plants_cords) == 1 or load >= state.total_plant_water_needed:
                                 continue
 
             remaining_capacity = capacity - load
             if remaining_capacity > 0 and state.total_load < state.total_plant_water_needed:
-                (entity_type, entity_index) = self.map.get((i,j), (None, -1))
+                (entity_type, entity_index) = entity_res if entity_res else self.map.get((i,j), (None, -1))
                 if entity_type == "tap":
                     water_available = state.taps[entity_index]
                     if water_available > 0:
                         state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
                         state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
+                        action_name = f"LOAD{{{id}}}"
+                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
                         state_new_non_empty_taps = None
                         if water_available == 1:
                             state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
 
-                        action_name = f"LOAD{{{id}}}"
                         state_new           = State(state,
                                                 _robots = state_new_robots,
                                                 _taps   = state_new_taps,
                                                 _total_load = state.total_load + 1,
                                                 _total_water_available = state.total_water_available - 1,
                                                 _non_empty_tap_cords = state_new_non_empty_taps,
-                                                _last_action = action_name)
+                                                _robot_last_actions = state_new_last_actions)
 
                         if self.heuristics_cache.get(state_new, None) is None:
                             moves.append((action_name, state_new))
                             if len(state.robots) == 1:
                                 continue
-                            if (len(state.non_empty_tap_cords) == 1 and state.last_action == action_name): # and last action was LOAD, then keep LOADing
+                            if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name): # and last action was LOAD, then keep LOADing
                                 continue
 
             if is_move_legal(i-1, j):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 action_name             = f"UP{{{id}}}"
-                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _last_action = action_name)
+                state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions)
 
                 if self.heuristics_cache.get(state_new, None) is None:
                     moves.append((action_name, state_new))
@@ -316,7 +321,8 @@ class WateringProblem(search.Problem):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 action_name             = f"DOWN{{{id}}}"
-                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _last_action = action_name)
+                state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions)
 
                 if self.heuristics_cache.get(state_new, None) is None:
                     moves.append((action_name, state_new))
@@ -325,7 +331,8 @@ class WateringProblem(search.Problem):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 action_name             = f"LEFT{{{id}}}"
-                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _last_action = action_name)
+                state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions)
 
                 if self.heuristics_cache.get(state_new, None) is None:
                     moves.append((action_name, state_new))
@@ -334,7 +341,8 @@ class WateringProblem(search.Problem):
                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
                 action_name             = f"RIGHT{{{id}}}"
-                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _last_action = action_name)
+                state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions)
 
                 if self.heuristics_cache.get(state_new, None) is None:
                     moves.append((action_name, state_new))
