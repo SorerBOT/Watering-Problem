@@ -12,51 +12,49 @@ KEY_ROBOTS  = "Robots"
 
 # BFS: calculate distance to all taps as we do at this moment, and then calculate the distance from every tap, to WHATEVER plant using multi-search
 
-
 #
 # 1. Why did pruning visited states work? What about g?
 # 2. Heuristic which takes into consideration entire paths (to satiate all plants) instead of the minimum effort in order to contribute.
 # 3. Add walls to remove redundant paths
 # 4. Can we break admissibility when we already visited the state with a higher g value?
 #
-#
-
 
 class State:
-    taps:                   tuple[int]
-    plants:                 tuple[int]
-    robots:                 tuple[tuple[str, int, int]]
-    robot_cords:            set[tuple[int, int]]
-    robot_cords_tuple:      tuple[tuple[int, int]]
+    taps                        : tuple[int]
+    plants                      : tuple[int]
+    robots                      : tuple[tuple[str, int, int]]
+    robot_cords                 : set[tuple[int, int]]
+    robot_cords_tuple           : tuple[tuple[int, int]]
 
-    non_satiated_plants_cords:  list[tuple[int, int]]
-    non_empty_tap_cords:        list[tuple[int, int]]
+    non_satiated_plants_cords   : list[tuple[int, int]]
+    non_empty_tap_cords         : list[tuple[int, int]]
 
-    total_plant_water_needed: int
-    total_water_available:  int
-    total_load:             int
+    total_plant_water_needed    : int
+    total_water_available       : int
+    total_load                  : int
 
-    __hash:                 int
-    __hash_taps:            int
-    __hash_plants:          int
-    __hash_robots:          int
-    __hash_robot_cords_tuple: int
+    __hash                      : int
+    __hash_taps                 : int
+    __hash_plants               : int
+    __hash_robots               : int
+    __hash_robot_cords_tuple    : int
 
-    robot_last_actions:           tuple[str] 
+    robot_last_actions          : tuple[str] 
+
 
     def __init__(self,
-                _old_state                                                  = None,
-                _taps               : tuple[int]                    | None  = None,
-                _plants             : tuple[int]                    | None  = None,
-                _robot_cords        : set[tuple[int, int]]          | None  = None,
-                _robot_cords_tuple  : tuple[tuple[int, int]]        | None  = None,
-                _robots             : tuple[tuple[str, int, int]]   | None  = None,
-                _total_plant_water_needed: int | None = None,
-                _total_water_available:  int | None = None,
-                _total_load:             int | None = None,
-                _non_satiated_plants_cords:  list[tuple[int, int]] | None = None,
-                _non_empty_tap_cords:        list[tuple[int, int]] | None = None,
-                _robot_last_actions: tuple[str] | None = None):
+                _old_state                                                          = None,
+                _taps                       : tuple[int]                    | None  = None,
+                _plants                     : tuple[int]                    | None  = None,
+                _robot_cords                : set[tuple[int, int]]          | None  = None,
+                _robot_cords_tuple          : tuple[tuple[int, int]]        | None  = None,
+                _robots                     : tuple[tuple[str, int, int]]   | None  = None,
+                _total_plant_water_needed   : int                           | None  = None,
+                _total_water_available      : int                           | None  = None,
+                _total_load                 : int                           | None  = None,
+                _non_satiated_plants_cords  : list[tuple[int, int]]         | None  = None,
+                _non_empty_tap_cords        : list[tuple[int, int]]         | None  = None,
+                _robot_last_actions         : tuple[str]                    | None  = None):
 
         if _old_state is not None:
             self.taps                       = _old_state.taps
@@ -378,6 +376,7 @@ class WateringProblem(search.Problem):
                     #if self.heuristics_cache.get(state_new, None) is None:
                     moves.append((action_name, state_new))
 
+        moves = [(action_name, state_new) for (action_name, state_new) in moves if self.heuristics_cache.get(state_new, None) is None]
         return moves
 
     def goal_test(self, state: State):
