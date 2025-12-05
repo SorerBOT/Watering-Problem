@@ -131,6 +131,7 @@ class WateringProblem(search.Problem):
     plant_cords_list:   list[tuple[int, int]]
     tap_cords_list:     list[tuple[int, int]]
     bfs_distances:      dict[tuple[ tuple[int, int], tuple[int, int] ], int]
+    plant_tap_distances: dict[tuple[ tuple[int, int], tuple[int, int] ], int]
     bfs_to_whatever_plant_distances:      dict[tuple[int, int], int]
 
     def __init__(self, initial):
@@ -180,7 +181,6 @@ class WateringProblem(search.Problem):
         for cords in self.plant_cords_list:
             self.bfs([cords])
         self.bfs_to_any(self.plant_cords_list)
-
 
     def bfs_to_any(self, src_cords: list[tuple[int, int]]): # this would get us the distances between certain coordinates and WHATEVER plant
         """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
@@ -253,15 +253,15 @@ class WateringProblem(search.Problem):
         """ Generates the successor states returns [(action, achieved_states, ...)]"""
         (height, width) = self.size
         moves = []
-        is_move_legal = lambda i,j: (
-                (0 <= i < height)
-                and (0 <= j < width)
-                and self.map.get((i,j), (None, -1))[0] != "wall")
+        # is_move_legal = lambda i,j: ( I INLINED EVERYTHING FOR THE SUBMISSION, 
+        #         (0 <= i < height)
+        #         and (0 <= j < width)
+        #         and self.map.get((i,j), (None, -1))[0] != "wall")
 
-        is_there_robot          = lambda i,j: (i,j) in state.robot_cords
+        #is_there_robot          = lambda i,j: (i,j) in state.robot_cords
 
-        tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
-        tuple_remove            = lambda t, index: t[:index] + t[index+1:]
+        # tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
+        # tuple_remove            = lambda t, index: t[:index] + t[index+1:]
 
         map                     = self.map
         plant_cords_list        = self.plant_cords_list
@@ -277,10 +277,10 @@ class WateringProblem(search.Problem):
                 if entity_type == "plant":
                     plant_water_needed = state.plants[entity_index]
                     if plant_water_needed > 0:
-                        state_new_robots        = tuple_replace(state.robots, index, (id, load - 1, capacity))
-                        state_new_plants        = tuple_replace(state.plants, entity_index, plant_water_needed - 1)
+                        state_new_robots        = state.robots[:index] + ((id, load - 1, capacity),) + state.robots[index+1:]
+                        state_new_plants        = state.plants[:entity_index] + (plant_water_needed - 1,) + state.plants[entity_index+1:]
                         action_name             = f"POUR{{{id}}}"
-                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                        state_new_last_actions  = state.robot_last_actions[:index] + (action_name,) + state.robot_last_actions[index+1:]
                         non_satiated_plants_cords       = None
                         if plant_water_needed == 1:
                             non_satiated_plants_cords   = [plant_cords  for plant_cords     in plant_cords_list    if state_new_plants[map[plant_cords][1]] > 0]
@@ -306,10 +306,10 @@ class WateringProblem(search.Problem):
                     if entity_type == "tap":
                         water_available = state.taps[entity_index]
                         if water_available > 0:
-                            state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
-                            state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
+                            state_new_robots    = state.robots[:index] + ((id, load + 1, capacity),) + state.robots[index+1:]
+                            state_new_taps      = state.taps[:entity_index] + (water_available - 1,) + state.taps[entity_index+1:]
                             action_name = f"LOAD{{{id}}}"
-                            state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                            state_new_last_actions = state.robot_last_actions[:index] + (action_name,) + state.robot_last_actions[index+1:]
                             state_new_non_empty_taps = None
                             if water_available == 1:
                                 state_new_non_empty_taps = [tap_cords    for tap_cords       in tap_cords_list      if state_new_taps[map[tap_cords][1]] > 0]
@@ -330,61 +330,73 @@ class WateringProblem(search.Problem):
                             if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
                                 continue
 
-            if is_move_legal(i-1, j):
+            if (
+                (0 <= i-1 < height)
+                and (0 <= j < width)
+                and self.map.get((i-1,j), (None, -1))[0] != "wall"):
                 opposite_action = f"DOWN{{{id}}}"
-                if is_there_robot(i+1, j):
+                if (i+1,j) in state.robot_cords:
                     if state.robot_last_actions[index] == opposite_action:
-                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
-                if not is_there_robot(i-1, j) and state.robot_last_actions[index] != opposite_action:
-                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
+                        state.robot_last_actions = state.robot_last_actions[:index] + ("",) + state.robot_last_actions[index+1:]
+                if not (i-1,j) in state.robot_cords and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = state.robot_cords_tuple[:index] + ((i-1,j),) + state.robot_cords_tuple[index+1:]
                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
                     action_name             = f"UP{{{id}}}"
-                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new_last_actions = state.robot_last_actions[:index] + (action_name,) + state.robot_last_actions[index+1:]
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
                     if self.heuristics_cache.get(state_new, None) is None:
                         moves.append((action_name, state_new))
 
-            if is_move_legal(i+1, j):
+            if (
+                (0 <= i+1 < height)
+                and (0 <= j < width)
+                and self.map.get((i+1,j), (None, -1))[0] != "wall"):
                 opposite_action = f"UP{{{id}}}"
-                if is_there_robot(i-1, j):
+                if (i-1,j) in state.robot_cords:
                     if state.robot_last_actions[index] == opposite_action:
-                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
-                if not is_there_robot(i+1,j) and state.robot_last_actions[index] != opposite_action:
-                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
+                        state.robot_last_actions = state.robot_last_actions[:index] + ("",) + state.robot_last_actions[index+1:]
+                if not (i+1,j) in state.robot_cords and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = state.robot_cords_tuple[:index] + ((i+1,j),) + state.robot_cords_tuple[index+1:]
                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
                     action_name             = f"DOWN{{{id}}}"
-                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new_last_actions = state.robot_last_actions[:index] + (action_name,) + state.robot_last_actions[index+1:]
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
                     if self.heuristics_cache.get(state_new, None) is None:
                         moves.append((action_name, state_new))
 
-            if is_move_legal(i, j-1):
+            if (
+                (0 <= i < height)
+                and (0 <= j-1 < width)
+                and self.map.get((i,j-1), (None, -1))[0] != "wall"):
                 opposite_action = f"RIGHT{{{id}}}"
-                if is_there_robot(i, j+1):
+                if (i,j+1) in state.robot_cords:
                     if state.robot_last_actions[index] == opposite_action:
-                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
-                if not is_there_robot(i,j-1) and state.robot_last_actions[index] != opposite_action:
-                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
+                        state.robot_last_actions = state.robot_last_actions[:index] + ("",) + state.robot_last_actions[index+1:]
+                if not (i,j-1) in state.robot_cords and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = state.robot_cords_tuple[:index] + ((i,j-1),) + state.robot_cords_tuple[index+1:]
                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
                     action_name             = f"LEFT{{{id}}}"
-                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new_last_actions = state.robot_last_actions[:index] + (action_name,) + state.robot_last_actions[index+1:]
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
                     if self.heuristics_cache.get(state_new, None) is None:
                         moves.append((action_name, state_new))
 
-            if is_move_legal(i, j+1):
+            if (
+                (0 <= i < height)
+                and (0 <= j+1 < width)
+                and self.map.get((i,j+1), (None, -1))[0] != "wall"):
                 opposite_action = f"LEFT{{{id}}}"
-                if is_there_robot(i, j-1):
+                if (i,j-1) in state.robot_cords:
                     if state.robot_last_actions[index] == opposite_action:
-                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
-                if not is_there_robot(i,j+1) and state.robot_last_actions[index] != opposite_action:
-                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
+                        state.robot_last_actions = state.robot_last_actions[:index] + ("",) + state.robot_last_actions[index+1:]
+                if not (i,j+1) in state.robot_cords and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = state.robot_cords_tuple[:index] + ((i,j+1),) + state.robot_cords_tuple[index+1:]
                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
                     action_name             = f"RIGHT{{{id}}}"
-                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new_last_actions = state.robot_last_actions[:index] + (action_name,) + state.robot_last_actions[index+1:]
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
                     if self.heuristics_cache.get(state_new, None) is None:
