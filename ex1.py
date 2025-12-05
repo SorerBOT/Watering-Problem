@@ -579,34 +579,58 @@ class WateringProblem(search.Problem):
                                     _robot_last_actions     = state_new_last_actions)
                 successors.append((action_name, successor))
 
-            remaining_capacity = capacity - load
-            if remaining_capacity > 0 and state.total_load < state.total_plant_water_needed:
-                (entity_type, entity_index) = self.map.get((i,j), (None, -1))
-                if entity_type == "tap":
-                    water_available = state.taps[entity_index]
-                    if water_available > 0:
-                        state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
-                        state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
-                        action_name = f"LOAD{{{id}}}"
-                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
-                        state_new_non_empty_taps = None
-                        if water_available == 1:
-                            state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
+                        remaining_capacity = capacity - load
+                if remaining_capacity > 0 and state.total_load < state.total_plant_water_needed:
+                    (entity_type, entity_index) = entity_res if entity_res else self.map.get((i,j), (None, -1))
+                    if entity_type == "tap":
+                        water_available = state.taps[entity_index]
+                        if water_available > 0:
+                            state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
+                            state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
+                            action_name = f"LOAD{{{id}}}"
+                            state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                            state_new_non_empty_taps = None
+                            if water_available == 1:
+                                state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
 
-                        state_new           = State(state,
-                                                _robots                 = state_new_robots,
-                                                _taps                   = state_new_taps,
-                                                _total_load             = state.total_load + 1,
-                                                _total_water_available  = state.total_water_available - 1,
-                                                _non_empty_tap_cords    = state_new_non_empty_taps,
-                                                _robot_last_actions     = state_new_last_actions,
-                                                _active_robot           = index)
-
-                        successors.append((action_name, state_new))
-                        if len(state.robots) == 1:
-                            continue
-                        if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
-                            continue
+                            new_states  = []
+                            if state.active_robot is not None:
+                                state_new       = State(state,
+                                                    _robots                 = state_new_robots,
+                                                    _taps                   = state_new_taps,
+                                                    _total_load             = state.total_load + 1,
+                                                    _total_water_available  = state.total_water_available - 1,
+                                                    _non_empty_tap_cords    = state_new_non_empty_taps,
+                                                    _robot_last_actions     = state_new_last_actions,
+                                                    _active_robot           = index,
+                                                    _is_active_only         = state.is_active_only,
+                                                    _destination            = state.destination)
+                                new_states.append(state_new)
+                            else:
+                                destinations    = state.non_satiated_plants_cords
+                                if load < capacity: # this might be problematic.
+                                    destinations.extend(state.non_empty_tap_cords)
+                                for destination in destinations:
+                                    if destination == (i,j):
+                                        continue
+                                    path_to_cords = self.bfs_paths[(i,j), destination]
+                                    if path_to_cords is None:
+                                        continue
+                                    is_there_blocking_robot_in_path = False
+                                    for r_cords in state.robot_cords:
+                                        if r_cords != (i,j) and r_cords in path_to_cords:
+                                            is_there_blocking_robot_in_path = True
+                                    state_new = State(state,
+                                                    _robots                 = state_new_robots,
+                                                    _taps                   = state_new_taps,
+                                                    _total_load             = state.total_load + 1,
+                                                    _total_water_available  = state.total_water_available - 1,
+                                                    _non_empty_tap_cords    = state_new_non_empty_taps,
+                                                    _robot_last_actions     = state_new_last_actions,
+                                                    _active_robot           = index,
+                                                    _is_active_only         = not is_there_blocking_robot_in_path,
+                                                    _destination            = destination)
+                                    new_states.append(state_new)
 
         return successors
 
