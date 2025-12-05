@@ -1,0 +1,58 @@
+1. No robot is active:
+    * All robots are allowed to move
+    * Robot LOADs for the first time:
+        a. make robot active
+        b. create a state for each path between the robot and a tap / plant except current position
+
+        c. check if path is blocked
+            i. if blocked - allow all robots to move
+            ii. if not blocked -- set is_active_only == True
+        d. set destination
+        e. add to successor (no need to continue)
+2. There is an active robot
+    a. is_active_only == False AND destination != None:
+        i. if active robot
+            * check if there's a robot blocking the path.
+                if not -- set is_active_only == True
+            * if robot cords == active_session_initial_cords
+                allow LOAD or moving on the path
+            * else:
+                allow moving on path
+            * if moved on path, check if arrived at destination after moving
+                * if arrived at destination:
+                        b. create a state for each path between the robot and a tap / plant except current position
+                        c. check if path is blocked
+                            i. if blocked - allow all robots to move
+                            ii. if not blocked -- set is_active_only == True
+                        d. set destination
+                        e. add to successor (no need to continue)
+                        * active_session_initial_cords == current_robot_cords
+                        * is_force_drink == True
+                        * is_force_pour == True
+        ii. if not active robot:
+            Allow movement, not LOAD / POUR
+    b. is_active_only == True:
+        i. if not active robot, skip
+        ii. if robot_cords == active_session_initial_cords:
+            allow drinking, pouring or moving on the path
+        iii. if not:
+            allow moving on the path
+        iv. if moved on the path, check if we arrived at destination, if so:
+
+
+
+
+            * set is_active_only == False
+            * set destination == None
+            * active_session_initial_cords == None
+            * is_force_drink == True
+            * is_force_pour == True
+    c. is_active_only == False AND destination == None:
+        i. if is_force_drink == True AND sitting on tap:
+            LOAD
+            set is_force_drink, is_force_pour = False
+        ii. if is_force_pour AND sitting on plant:
+            POUR
+            set is_force_drink, is_force_pour = False
+        iii. allow all movement
+            

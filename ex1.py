@@ -196,9 +196,9 @@ class WateringProblem(search.Problem):
         self.bfs_distances                      = {}
         self.bfs_to_whatever_plant_distances    = {}
         for cords in self.tap_cords_list:
-            self.bfs([cords])
+            self.bfs(cords)
         for cords in self.plant_cords_list:
-            self.bfs([cords])
+            self.bfs(cords)
         self.bfs_to_any(self.plant_cords_list)
 
 
@@ -229,12 +229,12 @@ class WateringProblem(search.Problem):
                     self.bfs_to_whatever_plant_distances[(node_i + d_i, node_j + d_j)] = cost + 1
                     visited_nodes.add((node_i + d_i, node_j + d_j))
 
-    def bfs(self, src_cords: list[tuple[int, int]]): # accepts a list, as we may have several src points (all plants to whatever taps, but single tap to whatever point)
+    def bfs(self, cords: tuple[int, int]): # accepts a list, as we may have several src points (all plants to whatever taps, but single tap to whatever point)
         """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
-        visited_nodes: set[tuple[int, int]] = set(src_cords) 
+        visited_nodes: set[tuple[int, int]] = set({ cords }) 
         queue: utils.FIFOQueue              = utils.FIFOQueue()
 
-        queue.extend(cords for cords in src_cords)
+        queue.append(cords)
 
         (height, width) = self.size
         is_position_legal = lambda i,j: (
@@ -242,9 +242,8 @@ class WateringProblem(search.Problem):
                 and (0 <= j < width)
                 and self.map.get((i,j), (None, -1))[0] != "wall")
 
-        for cords in src_cords:
-            self.bfs_distances[(cords, cords)]  = 0
-            self.bfs_paths[(cords, cords)]      = {cords}
+        self.bfs_distances[(cords, cords)]  = 0
+        self.bfs_paths[(cords, cords)]      = {cords}
         possible_actions = [(0,-1), (0,1), (-1, 0), (1,0)]
 
         while (len(queue) > 0):
@@ -255,9 +254,8 @@ class WateringProblem(search.Problem):
                     and not (node_i + d_i, node_j + d_j) in visited_nodes):
 
                     queue.append(new_point)
-                    for cords in src_cords:
-                        self.bfs_distances[(cords, new_point)] = self.bfs_distances[(cords, old_point)] + 1
-                        self.bfs_paths[(cords, new_point)] = self.bfs_paths[(cords, (node_i, node_j))].union({ new_point })
+                    self.bfs_distances[(cords, new_point)] = self.bfs_distances[(cords, old_point)] + 1
+                    self.bfs_paths[(cords, new_point)] = self.bfs_paths[(cords, old_point)].union({ new_point })
                     visited_nodes.add((node_i + d_i, node_j + d_j))
 
     def distance_nearest_plant(self, cords):
@@ -272,36 +270,24 @@ class WateringProblem(search.Problem):
             return float('inf')
         return dist 
 
-    def successor(self, state: State):
-        """ Generates the successor states returns [(action, achieved_states, ...)]"""
-        (height, width) = self.size
-        moves = []
+    def successor_active_robot_not_active_only(self, state: State):
+        # in this case, we have selected a robot to work with, and we know that it has a positive load
+        (height, width)     = self.size
+        possible_movements  = [((0,-1), "UP"), ((0,1), "DOWN"), ((-1, 0), "LEFT"), ((1,0), "RIGHT")]
+
         is_move_legal = lambda i,j: (
                 (0 <= i < height)
                 and (0 <= j < width)
                 and self.map.get((i,j), (None, -1))[0] != "wall")
-
         is_there_robot          = lambda i,j: (i,j) in state.robot_cords
 
         tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
         tuple_remove            = lambda t, index: t[:index] + t[index+1:]
 
-        if state.active_robot is not None:
-            if state.destination == state.robot_cords_tuple[state.active_robot]:
-                state.destination = None
-                state.is_active_only = False
-
+        successors              = []
         for index, (id, load, capacity) in enumerate(state.robots):
-            if state.is_active_only and index != state.active_robot:
-                continue
-
             (i,j) = state.robot_cords_tuple[index]
-
-            current_path = None
-            if state.destination:
-                current_path = self.bfs_paths[(state.destination, (i,j))]
-
-            entity_res      = None
+            entity_res          = None
 
             if load > 0:
                 (entity_type, entity_index) = entity_res = self.map.get((i,j), (None, -1))
@@ -316,22 +302,17 @@ class WateringProblem(search.Problem):
                         if plant_water_needed == 1:
                             non_satiated_plants_cords   = [plant_cords  for plant_cords     in self.plant_cords_list    if state_new_plants[self.map[plant_cords][1]] > 0]
 
-                        new_active_robot                = None if load - 1 == 0 else index
-                        is_active_only                  = state.is_active_only and new_active_robot is not None
-                        destination                     = state.destination if new_active_robot else None
-
-                        state_new                       = State(state,
-                                                            _plants = state_new_plants,
-                                                            _robots = state_new_robots,
-                                                            _total_load = state.total_load - 1,
-                                                            _total_plant_water_needed = state.total_plant_water_needed - 1,
-                                                            _non_satiated_plants_cords = non_satiated_plants_cords,
-                                                            _robot_last_actions = state_new_last_actions,
-                                                            _active_robot       = new_active_robot,
-                                                            _is_active_only         = is_active_only,
-                                                            _destination            = destination)
+                        new_active_robot        = None if load - 1 == 0 else index
+                        state_new               = State(state,
+                                                    _plants = state_new_plants,
+                                                    _robots = state_new_robots,
+                                                    _total_load = state.total_load - 1,
+                                                    _total_plant_water_needed = state.total_plant_water_needed - 1,
+                                                    _non_satiated_plants_cords = non_satiated_plants_cords,
+                                                    _robot_last_actions = state_new_last_actions,
+                                                    _active_robot       = new_active_robot)
                         #if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((action_name, state_new))
+                        successors.append((action_name, state_new))
                         if len(state.robots) == 1 or len(state.non_satiated_plants_cords) == 1 or load >= state.total_plant_water_needed:
                             continue
 
@@ -350,126 +331,555 @@ class WateringProblem(search.Problem):
                             if water_available == 1:
                                 state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
 
-                            new_states  = []
-                            if state.active_robot is not None:
-                                state_new       = State(state,
+                            state_new           = State(state,
                                                     _robots                 = state_new_robots,
                                                     _taps                   = state_new_taps,
                                                     _total_load             = state.total_load + 1,
                                                     _total_water_available  = state.total_water_available - 1,
                                                     _non_empty_tap_cords    = state_new_non_empty_taps,
                                                     _robot_last_actions     = state_new_last_actions,
-                                                    _active_robot           = index,
-                                                    _is_active_only         = state.is_active_only,
-                                                    _destination            = state.destination)
-                                new_states.append(state_new)
-                            else:
-                                destinations    = state.non_satiated_plants_cords
-                                if load < capacity: # this might be problematic.
-                                    destinations.extend(state.non_empty_tap_cords)
-                                for destination in destinations:
-                                    if destination == (i,j):
-                                        continue
-                                    path_to_cords = self.bfs_paths[(i,j), destination]
-                                    if path_to_cords is None:
-                                        continue
-                                    is_there_blocking_robot_in_path = False
-                                    for r_cords in state.robot_cords:
-                                        if r_cords != (i,j) and r_cords in path_to_cords:
-                                            is_there_blocking_robot_in_path = True
-                                    state_new = State(state,
-                                                    _robots                 = state_new_robots,
-                                                    _taps                   = state_new_taps,
-                                                    _total_load             = state.total_load + 1,
-                                                    _total_water_available  = state.total_water_available - 1,
-                                                    _non_empty_tap_cords    = state_new_non_empty_taps,
-                                                    _robot_last_actions     = state_new_last_actions,
-                                                    _active_robot           = index,
-                                                    _is_active_only         = not is_there_blocking_robot_in_path,
-                                                    _destination            = destination)
-                                    new_states.append(state_new)
+                                                    _active_robot           = index)
 
                             #if self.heuristics_cache.get(state_new, None) is None:
-                            moves.extend((action_name, state_new) for state_new in new_states)
+                            successors.append((action_name, state_new))
                             if len(state.robots) == 1:
                                 continue
                             if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
                                 continue
 
+
+
             if is_move_legal(i-1, j):
                 opposite_action = f"DOWN{{{id}}}"
-                if is_there_robot(i+1, j) and not state.is_active_only:
+                if is_there_robot(i+1, j):
                     if state.robot_last_actions[index] == opposite_action:
                         state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
                 if not is_there_robot(i-1, j) and state.robot_last_actions[index] != opposite_action:
-                    if (state.is_active_only and (i-1, j) in (current_path or {})) or not state.is_active_only:
-                        state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
-                        state_new_robot_cords   = set(state_new_robot_cords_tuple)
-                        action_name             = f"UP{{{id}}}"
-                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
-                        state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
-                                                        _is_active_only         = state.is_active_only,
-                                                        _destination            = state.destination)
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"UP{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                        #if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((action_name, state_new))
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
 
             if is_move_legal(i+1, j):
                 opposite_action = f"UP{{{id}}}"
-                if is_there_robot(i-1, j) and not state.is_active_only:
+                if is_there_robot(i-1, j):
                     if state.robot_last_actions[index] == opposite_action:
                         state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
                 if not is_there_robot(i+1,j) and state.robot_last_actions[index] != opposite_action:
-                    if (state.is_active_only and (i+1, j) in (current_path or {})) or not state.is_active_only:
-                        state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
-                        state_new_robot_cords   = set(state_new_robot_cords_tuple)
-                        action_name             = f"DOWN{{{id}}}"
-                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
-                        state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
-                                                        _is_active_only         = state.is_active_only,
-                                                        _destination            = state.destination)
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"DOWN{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                        #if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((action_name, state_new))
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
 
             if is_move_legal(i, j-1):
                 opposite_action = f"RIGHT{{{id}}}"
-                if is_there_robot(i, j+1) and not state.is_active_only:
+                if is_there_robot(i, j+1):
                     if state.robot_last_actions[index] == opposite_action:
                         state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
                 if not is_there_robot(i,j-1) and state.robot_last_actions[index] != opposite_action:
-                    if (state.is_active_only and (i, j-1) in (current_path or {})) or not state.is_active_only:
-                        state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
-                        state_new_robot_cords   = set(state_new_robot_cords_tuple)
-                        action_name             = f"LEFT{{{id}}}"
-                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
-                        state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
-                                                        _is_active_only         = state.is_active_only,
-                                                        _destination            = state.destination)
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"LEFT{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                        #if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((action_name, state_new))
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
 
             if is_move_legal(i, j+1):
                 opposite_action = f"LEFT{{{id}}}"
-                if is_there_robot(i, j-1) and not state.is_active_only:
+                if is_there_robot(i, j-1):
                     if state.robot_last_actions[index] == opposite_action:
                         state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
                 if not is_there_robot(i,j+1) and state.robot_last_actions[index] != opposite_action:
-                    if (state.is_active_only and (i, j+1) in (current_path or {})) or not state.is_active_only:
-                        state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
-                        state_new_robot_cords   = set(state_new_robot_cords_tuple)
-                        action_name             = f"RIGHT{{{id}}}"
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"RIGHT{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
+
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
+        return successors
+    def successor_active_robot_active_only(self, state: State):
+        # in this case, we have selected a robot to work with, and we know that it has a positive load
+        (height, width)     = self.size
+        possible_movements  = [((0,-1), "UP"), ((0,1), "DOWN"), ((-1, 0), "LEFT"), ((1,0), "RIGHT")]
+
+        is_move_legal = lambda i,j: (
+                (0 <= i < height)
+                and (0 <= j < width)
+                and self.map.get((i,j), (None, -1))[0] != "wall")
+        is_there_robot          = lambda i,j: (i,j) in state.robot_cords
+
+        tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
+        tuple_remove            = lambda t, index: t[:index] + t[index+1:]
+
+        successors              = []
+        for index, (id, load, capacity) in enumerate(state.robots):
+            (i,j) = state.robot_cords_tuple[index]
+            entity_res          = None
+
+            if load > 0:
+                (entity_type, entity_index) = entity_res = self.map.get((i,j), (None, -1))
+                if entity_type == "plant":
+                    plant_water_needed = state.plants[entity_index]
+                    if plant_water_needed > 0:
+                        state_new_robots        = tuple_replace(state.robots, index, (id, load - 1, capacity))
+                        state_new_plants        = tuple_replace(state.plants, entity_index, plant_water_needed - 1)
+                        action_name             = f"POUR{{{id}}}"
                         state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
-                        state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
-                                                        _is_active_only         = state.is_active_only,
-                                                        _destination            = state.destination)
+                        non_satiated_plants_cords       = None
+                        if plant_water_needed == 1:
+                            non_satiated_plants_cords   = [plant_cords  for plant_cords     in self.plant_cords_list    if state_new_plants[self.map[plant_cords][1]] > 0]
 
+                        new_active_robot        = None if load - 1 == 0 else index
+                        state_new               = State(state,
+                                                    _plants = state_new_plants,
+                                                    _robots = state_new_robots,
+                                                    _total_load = state.total_load - 1,
+                                                    _total_plant_water_needed = state.total_plant_water_needed - 1,
+                                                    _non_satiated_plants_cords = non_satiated_plants_cords,
+                                                    _robot_last_actions = state_new_last_actions,
+                                                    _active_robot       = new_active_robot)
                         #if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((action_name, state_new))
+                        successors.append((action_name, state_new))
+                        if len(state.robots) == 1 or len(state.non_satiated_plants_cords) == 1 or load >= state.total_plant_water_needed:
+                            continue
 
-        moves = [(action_name, state_new) for (action_name, state_new) in moves if self.heuristics_cache.get(state_new, None) is None]
-        return moves
+            if state.active_robot is None or state.active_robot == index:
+                remaining_capacity = capacity - load
+                if remaining_capacity > 0 and state.total_load < state.total_plant_water_needed:
+                    (entity_type, entity_index) = entity_res if entity_res else self.map.get((i,j), (None, -1))
+                    if entity_type == "tap":
+                        water_available = state.taps[entity_index]
+                        if water_available > 0:
+                            state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
+                            state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
+                            action_name = f"LOAD{{{id}}}"
+                            state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                            state_new_non_empty_taps = None
+                            if water_available == 1:
+                                state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
+
+                            state_new           = State(state,
+                                                    _robots                 = state_new_robots,
+                                                    _taps                   = state_new_taps,
+                                                    _total_load             = state.total_load + 1,
+                                                    _total_water_available  = state.total_water_available - 1,
+                                                    _non_empty_tap_cords    = state_new_non_empty_taps,
+                                                    _robot_last_actions     = state_new_last_actions,
+                                                    _active_robot           = index)
+
+                            #if self.heuristics_cache.get(state_new, None) is None:
+                            successors.append((action_name, state_new))
+                            if len(state.robots) == 1:
+                                continue
+                            if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
+                                continue
+
+
+
+            if is_move_legal(i-1, j):
+                opposite_action = f"DOWN{{{id}}}"
+                if is_there_robot(i+1, j):
+                    if state.robot_last_actions[index] == opposite_action:
+                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+                if not is_there_robot(i-1, j) and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"UP{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
+
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
+
+            if is_move_legal(i+1, j):
+                opposite_action = f"UP{{{id}}}"
+                if is_there_robot(i-1, j):
+                    if state.robot_last_actions[index] == opposite_action:
+                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+                if not is_there_robot(i+1,j) and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"DOWN{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
+
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
+
+            if is_move_legal(i, j-1):
+                opposite_action = f"RIGHT{{{id}}}"
+                if is_there_robot(i, j+1):
+                    if state.robot_last_actions[index] == opposite_action:
+                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+                if not is_there_robot(i,j-1) and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"LEFT{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
+
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
+
+            if is_move_legal(i, j+1):
+                opposite_action = f"LEFT{{{id}}}"
+                if is_there_robot(i, j-1):
+                    if state.robot_last_actions[index] == opposite_action:
+                        state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+                if not is_there_robot(i,j+1) and state.robot_last_actions[index] != opposite_action:
+                    state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
+                    state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                    action_name             = f"RIGHT{{{id}}}"
+                    state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                    state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
+
+                    #if self.heuristics_cache.get(state_new, None) is None:
+                    successors.append((action_name, state_new))
+        return successors
+    def successor_no_active_robot(self, state: State):
+        # in this case, we have not yet selected our active robot.
+        (height, width)     = self.size
+        possible_movements  = [((0,-1), "UP"), ((0,1), "DOWN"), ((-1, 0), "LEFT"), ((1,0), "RIGHT")]
+
+        is_move_legal = lambda i,j: (
+                (0 <= i < height)
+                and (0 <= j < width)
+                and self.map.get((i,j), (None, -1))[0] != "wall")
+        is_there_robot          = lambda i,j: (i,j) in state.robot_cords
+
+        tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
+        tuple_remove            = lambda t, index: t[:index] + t[index+1:]
+
+        successors              = []
+        for index, (id, load, capacity) in enumerate(state.robots):
+            (i, j) = state.robot_cords_tuple[index]
+            for ((d_i, d_j), action) in possible_movements:
+                (new_i, new_j) = new_cords = (i + d_i, j + d_j)
+                if not (is_move_legal(new_i, new_j) and not is_there_robot(new_i, new_j)):
+                    continue
+                state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, new_cords)
+                state_new_robot_cords   = set(state_new_robot_cords_tuple)
+                action_name             = action + f"{{{id}}}"
+                state_new_last_actions  = tuple_replace(state.robot_last_actions, index, action_name)
+                successor = State(state,
+                                    _robot_cords            = state_new_robot_cords,
+                                    _robot_cords_tuple      = state_new_robot_cords_tuple,
+                                    _robot_last_actions     = state_new_last_actions)
+                successors.append((action_name, successor))
+
+            remaining_capacity = capacity - load
+            if remaining_capacity > 0 and state.total_load < state.total_plant_water_needed:
+                (entity_type, entity_index) = self.map.get((i,j), (None, -1))
+                if entity_type == "tap":
+                    water_available = state.taps[entity_index]
+                    if water_available > 0:
+                        state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
+                        state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
+                        action_name = f"LOAD{{{id}}}"
+                        state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+                        state_new_non_empty_taps = None
+                        if water_available == 1:
+                            state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
+
+                        state_new           = State(state,
+                                                _robots                 = state_new_robots,
+                                                _taps                   = state_new_taps,
+                                                _total_load             = state.total_load + 1,
+                                                _total_water_available  = state.total_water_available - 1,
+                                                _non_empty_tap_cords    = state_new_non_empty_taps,
+                                                _robot_last_actions     = state_new_last_actions,
+                                                _active_robot           = index)
+
+                        successors.append((action_name, state_new))
+                        if len(state.robots) == 1:
+                            continue
+                        if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
+                            continue
+
+        return successors
+
+    def successor_is_active_only(self, state: State):
+        return[]
+    def successor_is_not_active_only(self, state: State):
+        return []
+
+    def successor(self, state: State):
+        """ Generates the successor states returns [(action, achieved_states, ...)]"""
+        (height, width) = self.size
+        is_move_legal = lambda i,j: (
+                (0 <= i < height)
+                and (0 <= j < width)
+                and self.map.get((i,j), (None, -1))[0] != "wall")
+        is_there_robot          = lambda i,j: (i,j) in state.robot_cords
+        tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
+        tuple_remove            = lambda t, index: t[:index] + t[index+1:]
+
+        successors = []
+        if state.active_robot is not None:
+            if state.is_active_only:
+                successors = self.successor_active_robot_active_only(state)
+            else:
+                successors = self.successor_active_robot_not_active_only(state)
+        elif state.active_robot is None:
+            successors = self.successor_no_active_robot(state)
+        successors = [(action_name, state_new) for (action_name, state_new) in successors if self.heuristics_cache.get(state_new, None) is None]
+        return successors
+
+
+    def successor_bom(self, state: State):
+       """ Generates the successor states returns [(action, achieved_states, ...)]"""
+       # (height, width) = self.size
+       # moves = []
+       # is_move_legal = lambda i,j: (
+       #         (0 <= i < height)
+       #         and (0 <= j < width)
+       #         and self.map.get((i,j), (None, -1))[0] != "wall")
+
+       # is_there_robot          = lambda i,j: (i,j) in state.robot_cords
+
+       # tuple_replace           = lambda t, index, new_value: t[:index] + (new_value,) + t[index+1:]
+       # tuple_remove            = lambda t, index: t[:index] + t[index+1:]
+
+       # successors              = []
+       # possible_movements      = [((0,-1), "UP"), ((0,1), "DOWN"), ((-1, 0), "LEFT"), ((1,0), "RIGHT")]
+
+       # # we have arrived at our destination and so we need to clear it
+       # if state.active_robot is not None:
+       #     (i,j) = state.robot_cords_tuple[state.active_robot]
+       #     if (i,j) == state.destination:
+       #         state.destination = None
+       #         state.is_active_only = False
+
+       # # we are still on the way to the destination, no reason to drink, no reason to do pour
+       # if state.active_robot is not None:
+       #     (active_id, active_load, active_capacity)    = state.robots[state.active_robot]
+       #     (active_i,active_j) = active_cords = state.robot_cords_tuple[state.active_robot]
+       #     path      = self.bfs_paths.get([(state.destination, active_cords)], {})
+       #     for ((d_i, d_j), action) in possible_movements:
+       #         (new_i, new_j) = new_cords = (active_i + d_i, active_j + d_j)
+       #         if not is_move_legal(new_i, new_j) or is_there_robot(new_i, new_j):
+       #             continue
+       #         if new_cords in path or not path:
+       #             state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, state.active_robot, new_cords)
+       #             state_new_robot_cords   = set(state_new_robot_cords_tuple)
+       #             action_name             = action + f"{{{active_id}}}"
+       #             state_new_last_actions = tuple_replace(state.robot_last_actions, state.active_robot, action_name)
+       #             successor = State(state,
+       #                                 _robot_cords            = state_new_robot_cords,
+       #                                 _robot_cords_tuple      = state_new_robot_cords_tuple,
+       #                                 _robot_last_actions     = state_new_last_actions,
+       #                                 _active_robot           = state.active_robot,
+       #                                 _is_active_only         = True,
+       #                                 _destination            = state.destination)
+       #             successors.append((action_name, successor))
+       #     (entity_type, entity_index) = entity_res = self.map.get((active_i,active_j), (None, -1))
+       #     # if not is active only, then we allow other robots to move as well.
+       #     # the state is not is_active_only just because there is some robot blocking some path
+       #     if not state.is_active_only:
+       #         for index, (id, load, capacity) in enumerate(state.robots):
+       #             (i, j) = state.robot_cords_tuple[index]
+       #             for ((d_i, d_j), action) in possible_movements:
+       #                 (new_i, new_j) = new_cords = (i + d_i, j + d_j)
+       #                 if not is_move_legal(new_i, new_j):
+       #                     continue
+       #                 state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, new_cords)
+       #                 state_new_robot_cords   = set(state_new_robot_cords_tuple)
+       #                 action_name             = action + f"{{{id}}}"
+       #                 state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+       #                 successor = State(state,
+       #                                     _robot_cords            = state_new_robot_cords,
+       #                                     _robot_cords_tuple      = state_new_robot_cords_tuple,
+       #                                     _robot_last_actions     = state_new_last_actions,
+       #                                     _active_robot           = state.active_robot,
+       #                                     _is_active_only         = True,
+       #                                     _destination            = state.destination)
+       #                 successors.append((action_name, successor))
+       # else:
+       #                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
+       #                                                     _is_active_only         = state.is_active_only,
+       #                                                     # in this case, we have not yet selected our active robot.
+       #                                                     for index, (id, load, capacity) in enumerate(state.robots):
+       #                                                     (i,j) = state.robot_cords_tuple[index]
+
+       #                                                     entity_res      = None
+
+       #                                                     if load > 0:
+       #                                                     (entity_type, entity_index) = entity_res = self.map.get((i,j), (None, -1))
+       #                                                     if entity_type == "plant":
+       #                                                     plant_water_needed = state.plants[entity_index]
+       #                                                     if plant_water_needed > 0:
+       #                                                     state_new_robots        = tuple_replace(state.robots, index, (id, load - 1, capacity))
+       #                                                     state_new_plants        = tuple_replace(state.plants, entity_index, plant_water_needed - 1)
+       #                                                     action_name             = f"POUR{{{id}}}"
+       #                                                     state_new_last_actions  = tuple_replace(state.robot_last_actions, index, action_name)
+       #                                                     non_satiated_plants_cords       = None
+       #                                                     if plant_water_needed == 1:
+       #                                                     non_satiated_plants_cords   = [plant_cords  for plant_cords     in self.plant_cords_list    if state_new_plants[self.map[plant_cords][1]] > 0]
+
+       #                                                     new_active_robot                = None if load - 1 == 0 else index
+       #                                                     is_active_only                  = state.is_active_only and new_active_robot is not None
+       #                                                     destination                     = state.destination if new_active_robot else None
+
+       #                                                     state_new                       = State(state,
+       #                                                                                             _plants = state_new_plants,
+       #                                                                                             _robots = state_new_robots,
+       #                                                                                             _total_load = state.total_load - 1,
+       #                                                                                             _total_plant_water_needed = state.total_plant_water_needed - 1,
+       #                                                                                             _non_satiated_plants_cords = non_satiated_plants_cords,
+       #                                                                                             _robot_last_actions = state_new_last_actions,
+       #                                                                                             _active_robot       = new_active_robot,
+       #                                                                                             _is_active_only         = is_active_only,
+       #                                                                                             _destination            = destination)
+       #                                                     #if self.heuristics_cache.get(state_new, None) is None:
+       #                                                     moves.append((action_name, state_new))
+       #                                                     if len(state.robots) == 1 or len(state.non_satiated_plants_cords) == 1 or load >= state.total_plant_water_needed:
+       #                                                     continue
+
+       #                                                     if state.active_robot is None or state.active_robot == index:
+       #                                                     remaining_capacity = capacity - load
+       #                                                     if remaining_capacity > 0 and state.total_load < state.total_plant_water_needed:
+       #                                                     (entity_type, entity_index) = entity_res if entity_res else self.map.get((i,j), (None, -1))
+       #                                                     if entity_type == "tap":
+       #                                                     water_available = state.taps[entity_index]
+       #                                                     if water_available > 0:
+       #                                                     state_new_robots    = tuple_replace(state.robots, index, (id, load + 1, capacity))
+       #                                                     state_new_taps      = tuple_replace(state.taps, entity_index, water_available - 1)
+       #                                                     action_name = f"LOAD{{{id}}}"
+       #                                                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+       #                     state_new_non_empty_taps = None
+       #                     if water_available == 1:
+       #                         state_new_non_empty_taps = [tap_cords    for tap_cords       in self.tap_cords_list      if state_new_taps[self.map[tap_cords][1]] > 0]
+
+       #                         new_states  = []
+       #                         if state.active_robot is not None:
+       #                             state_new       = State(state,
+       #                                                     _robots                 = state_new_robots,
+       #                                                     _taps                   = state_new_taps,
+       #                                                     _total_load             = state.total_load + 1,
+       #                                                     _total_water_available  = state.total_water_available - 1,
+       #                                                     _non_empty_tap_cords    = state_new_non_empty_taps,
+       #                                                     _robot_last_actions     = state_new_last_actions,
+       #                                                     _active_robot           = index,
+       #                                                     _is_active_only         = state.is_active_only,
+       #                                                     _destination            = state.destination)
+       #                             new_states.append(state_new)
+       #                         else:
+       #                             destinations    = state.non_satiated_plants_cords
+       #                             if load < capacity: # this might be problematic.
+       #                                 destinations.extend(state.non_empty_tap_cords)
+       #                             for destination in destinations:
+       #                                 if destination == (i,j):
+       #                                     continue
+       #                                 path_to_cords = self.bfs_paths[destination, (i,j)]
+       #                                 if path_to_cords is None:
+       #                                     continue
+       #                                 is_there_blocking_robot_in_path = False
+       #                                 for r_cords in state.robot_cords:
+       #                                     if r_cords != (i,j) and r_cords in path_to_cords:
+       #                                         is_there_blocking_robot_in_path = True
+       #                                 state_new = State(state,
+       #                                                   _robots                 = state_new_robots,
+       #                                                   _taps                   = state_new_taps,
+       #                                                   _total_load             = state.total_load + 1,
+       #                                                   _total_water_available  = state.total_water_available - 1,
+       #                                                   _non_empty_tap_cords    = state_new_non_empty_taps,
+       #                                                   _robot_last_actions     = state_new_last_actions,
+       #                                                   _active_robot           = index,
+       #                                                   _is_active_only         = not is_there_blocking_robot_in_path,
+       #                                                   _destination            = destination)
+       #                                 new_states.append(state_new)
+
+       #                         #if self.heuristics_cache.get(state_new, None) is None:
+       #                         moves.extend((action_name, state_new) for state_new in new_states)
+       #                         if len(state.robots) == 1:
+       #                             continue
+       #                         if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
+       #                             continue
+
+       #         if is_move_legal(i-1, j):
+       #             opposite_action = f"DOWN{{{id}}}"
+       #             if is_there_robot(i+1, j) and not state.is_active_only:
+       #                 if state.robot_last_actions[index] == opposite_action:
+       #                     state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+       #             if not is_there_robot(i-1, j) and state.robot_last_actions[index] != opposite_action:
+       #                 if (state.is_active_only and (i-1, j) in (current_path or {})) or not state.is_active_only:
+       #                     state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i-1,j))
+       #                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
+       #                     action_name             = f"UP{{{id}}}"
+       #                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+       #                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
+       #                                                     _is_active_only         = state.is_active_only,
+       #                                                     _destination            = state.destination)
+
+       #                     #if self.heuristics_cache.get(state_new, None) is None:
+       #                     moves.append((action_name, state_new))
+
+       #         if is_move_legal(i+1, j):
+       #             opposite_action = f"UP{{{id}}}"
+       #             if is_there_robot(i-1, j) and not state.is_active_only:
+       #                 if state.robot_last_actions[index] == opposite_action:
+       #                     state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+       #             if not is_there_robot(i+1,j) and state.robot_last_actions[index] != opposite_action:
+       #                 if (state.is_active_only and (i+1, j) in (current_path or {})) or not state.is_active_only:
+       #                     state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i+1,j))
+       #                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
+       #                     action_name             = f"DOWN{{{id}}}"
+       #                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+       #                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
+       #                                                     _is_active_only         = state.is_active_only,
+       #                                                     _destination            = state.destination)
+
+       #                     #if self.heuristics_cache.get(state_new, None) is None:
+       #                     moves.append((action_name, state_new))
+
+       #         if is_move_legal(i, j-1):
+       #             opposite_action = f"RIGHT{{{id}}}"
+       #             if is_there_robot(i, j+1) and not state.is_active_only:
+       #                 if state.robot_last_actions[index] == opposite_action:
+       #                     state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+       #             if not is_there_robot(i,j-1) and state.robot_last_actions[index] != opposite_action:
+       #                 if (state.is_active_only and (i, j-1) in (current_path or {})) or not state.is_active_only:
+       #                     state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j-1))
+       #                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
+       #                     action_name             = f"LEFT{{{id}}}"
+       #                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+       #                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot,
+       #                                                     _is_active_only         = state.is_active_only,
+       #                                                     _destination            = state.destination)
+
+       #                     #if self.heuristics_cache.get(state_new, None) is None:
+       #                     moves.append((action_name, state_new))
+
+       #         if is_move_legal(i, j+1):
+       #             opposite_action = f"LEFT{{{id}}}"
+       #             if is_there_robot(i, j-1) and not state.is_active_only:
+       #                 if state.robot_last_actions[index] == opposite_action:
+       #                     state.robot_last_actions = tuple_replace(state.robot_last_actions, index, "")
+       #             if not is_there_robot(i,j+1) and state.robot_last_actions[index] != opposite_action:
+       #                 if (state.is_active_only and (i, j+1) in (current_path or {})) or not state.is_active_only:
+       #                     state_new_robot_cords_tuple = tuple_replace(state.robot_cords_tuple, index, (i,j+1))
+       #                     state_new_robot_cords   = set(state_new_robot_cords_tuple)
+       #                     action_name             = f"RIGHT{{{id}}}"
+       #                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
+       #                                                     _destination            = state.destination)
+
+       #                     #if self.heuristics_cache.get(state_new, None) is None:
+       #                     moves.append((action_name, state_new))
+
+       # moves = [(action_name, state_new) for (action_name, state_new) in moves if self.heuristics_cache.get(state_new, None) is None]
+       # return moves
 
     def goal_test(self, state: State):
         """ given a state, checks if this is the goal state, compares to the created goal state returns True/False"""
