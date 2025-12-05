@@ -412,6 +412,7 @@ class WateringProblem(search.Problem):
         """ This is the heuristic. It gets a node (not a state)
         and returns a goal distance estimate"""
 
+        INF                             = float('inf')
         total_load                      = node.state.total_load
         total_plant_water_needed        = node.state.total_plant_water_needed
         total_water_available           = node.state.total_water_available
@@ -420,22 +421,22 @@ class WateringProblem(search.Problem):
         if not node.state.non_satiated_plants_cords:
             return 0
         if total_water_available + total_load < total_plant_water_needed:
-            return float('inf')
+            return INF
 
         cached_result = self.heuristics_cache.get(node.state, None)
         if cached_result is not None:
             (value, path_cost)          = cached_result
             if path_cost < node.path_cost:
                 return value
-                #return float('inf')
+                #return INF
             else:
                 self.heuristics_cache[node.state] = (value, node.path_cost)
                 return value
  
-        min_robot_contribution_distance         = float('inf')
+        min_robot_contribution_distance         = INF
         for index, (id, load, capacity) in enumerate(node.state.robots):
             robot_cords = node.state.robot_cords_tuple[index]
-            current_robot_contribution_distance = float('inf')
+            current_robot_contribution_distance = INF
             distance_tap_then_plant = None
             if load == 0:
                 if node.state.non_empty_tap_cords:
@@ -444,7 +445,7 @@ class WateringProblem(search.Problem):
                         for tap_cords in node.state.non_empty_tap_cords)
                     current_robot_contribution_distance = distance_tap_then_plant
                 else:
-                    current_robot_contribution_distance = float('inf')
+                    current_robot_contribution_distance = INF
             else:
                 if total_load < total_plant_water_needed:
                     if not distance_tap_then_plant:
