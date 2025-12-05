@@ -294,8 +294,8 @@ class WateringProblem(search.Problem):
                                                     _non_satiated_plants_cords = non_satiated_plants_cords,
                                                     _robot_last_actions = state_new_last_actions,
                                                     _active_robot       = new_active_robot)
-                        #if self.heuristics_cache.get(state_new, None) is None:
-                        moves.append((action_name, state_new))
+                        if self.heuristics_cache.get(state_new, None) is None:
+                            moves.append((action_name, state_new))
                         if len(state.robots) == 1 or len(state.non_satiated_plants_cords) == 1 or load >= state.total_plant_water_needed:
                             continue
 
@@ -323,8 +323,8 @@ class WateringProblem(search.Problem):
                                                     _robot_last_actions     = state_new_last_actions,
                                                     _active_robot           = index)
 
-                            #if self.heuristics_cache.get(state_new, None) is None:
-                            moves.append((action_name, state_new))
+                            if self.heuristics_cache.get(state_new, None) is None:
+                                moves.append((action_name, state_new))
                             if len(state.robots) == 1:
                                 continue
                             if (len(state.non_empty_tap_cords) == 1 and state.robot_last_actions[index] == action_name) and load < min(state.plants): # and last action was LOAD, then keep LOADing
@@ -342,8 +342,8 @@ class WateringProblem(search.Problem):
                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                    #if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if self.heuristics_cache.get(state_new, None) is None:
+                        moves.append((action_name, state_new))
 
             if is_move_legal(i+1, j):
                 opposite_action = f"UP{{{id}}}"
@@ -357,8 +357,8 @@ class WateringProblem(search.Problem):
                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                    #if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if self.heuristics_cache.get(state_new, None) is None:
+                        moves.append((action_name, state_new))
 
             if is_move_legal(i, j-1):
                 opposite_action = f"RIGHT{{{id}}}"
@@ -372,8 +372,8 @@ class WateringProblem(search.Problem):
                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                    #if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if self.heuristics_cache.get(state_new, None) is None:
+                        moves.append((action_name, state_new))
 
             if is_move_legal(i, j+1):
                 opposite_action = f"LEFT{{{id}}}"
@@ -387,10 +387,9 @@ class WateringProblem(search.Problem):
                     state_new_last_actions = tuple_replace(state.robot_last_actions, index, action_name)
                     state_new               = State(state, _robot_cords = state_new_robot_cords, _robot_cords_tuple = state_new_robot_cords_tuple, _robot_last_actions = state_new_last_actions, _active_robot = state.active_robot)
 
-                    #if self.heuristics_cache.get(state_new, None) is None:
-                    moves.append((action_name, state_new))
+                    if self.heuristics_cache.get(state_new, None) is None:
+                        moves.append((action_name, state_new))
 
-        moves = [(action_name, state_new) for (action_name, state_new) in moves if self.heuristics_cache.get(state_new, None) is None]
         return moves
 
     def goal_test(self, state: State):
