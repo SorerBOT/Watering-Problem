@@ -143,10 +143,29 @@ class Controller:
         plant_rewards = self.original_game._plants_reward[plant_cords]
         plant_mean_reward_per_water_unit = sum(plant_rewards) / len(plant_rewards)
 
+        max_mean_reward_per_step_for_path = -float('inf')
+        # Path going through a tap
+        max_tap_cords = None
         for tap_cords, tap_available_water in taps:
             M = min(tap_available_water, mean_water_missing_to_satiate, remaining_capacity)
-            mean_steps_to_tap_then_plant = self.calc_mean_steps(robot_cords, tap_cords, success_rate) + self.calc_mean_steps(tap_cords, plant_cords, success_rate)
-            mean_poured_units = min(M + load, mean_water_needed_to_satiate_plant)
+            mean_steps_to_tap_then_plant = self.calc_mean_steps(tap_cords, robot_cords, success_rate) + self.calc_mean_steps(tap_cords, plant_cords, success_rate)
+            mean_poured_units = min(M + load, mean_water_needed_to_satiate_plant) # including SPILL
             mean_steps_for_path = (M / success_rate) + mean_steps_to_tap_then_plant + mean_poured_units
             mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
             mean_reward_per_step_for_path = mean_reward_for_path / mean_steps_for_path
+            if mean_reward_per_step_for_path > max_mean_reward_per_step_for_path:
+                max_tap_cords = tap_cords
+                max_mean_reward_per_step_for_path = mean_reward_per_step_for_path
+
+        # Direct Path
+        if load > 0:
+            mean_steps_to_plant = self.calc_mean_steps(plant_cords, robot_cords, success_rate)
+            mean_poured_units = min(load, mean_water_needed_to_satiate_plant) # including SPILL
+            mean_steps_for_path = mean_steps_to_plant + mean_poured_units
+            mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
+            mean_reward_per_step_for_path = mean_reward_for_path / mean_steps_for_path
+            if mean_reward_per_step_for_path > max_mean_reward_per_step_for_path:
+                max_tap_cords = None # meaning we don't need to go through a tap
+                max_mean_reward_per_step_for_path = mean_reward_per_step_for_path
+
+        return (max_mean_reward_per_step_for_path, max_tap_cords)
