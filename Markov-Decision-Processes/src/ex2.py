@@ -5,6 +5,8 @@ from collections import deque
 id = ["000000000"]
 
 Cords = tuple[int, int]
+Robot = tuple[int, Cords, int]
+Plant = tuple[Cords, int]
 
 class Controller:
     """This class is a controller for the ext_plant game."""
@@ -112,3 +114,18 @@ class Controller:
         for cords in self.original_game.plants:
             self.bfs(cords, total_walls)
 
+# We are considering two possible situations:
+#   - Going to a plant directly, and watering it
+#   - Going to a tap, then from there going to a plant and watering it.
+# The second situation is a bit more complicated, so here is how I model it:
+# for every robot and plant:
+# go over every tap, and calculate the value of loading water units in the following amount:
+# M := min(tap_available_water, plant_water_needed / success_rate, robot_capacity)
+# * plant_water_needed / success_rate is the EXPECTED amount of water needed to satiate the plant with this particular robot
+# now, get the amount of steps needed to get to the tap, and from the tap to the plant using calc_mean_step that we worked on.
+# get the mean of the total number of turns as being: (M / success_rate) loading operations (when failure occurs, we don't load anything but just waste a turn) + the mean amount of steps required to get to the tap and from there to the plant + M (the amount of times we POUR on the plant)
+# now, get the mean reward for this option as: M * success_rate * plant_reward_per_water_unit
+# at last, divide the mean reward for this option by the mean total amount of turns  to get the mean per step reward
+# from this we find the best greedy option for going to a tap then to a plant, we will later compare it with going directly to the plant.
+    def eval_robot_plant(self, robot: Robot, plant: Plant):
+        success_rate
