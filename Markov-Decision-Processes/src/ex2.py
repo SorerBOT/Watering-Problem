@@ -20,35 +20,78 @@ class Controller:
     def __init__(self, game: ext_plant.Game):
         """Initialize controller for given game model."""
         self.original_game = game
-        self.bfs_path = {}
+        self.bfs_paths = {}
         self.bfs_distances = {}
-  
+ 
+    # In general, we want to consider both a greedy solution, oriented towards short term gains
+    # and a more strategical solution, aimed at satiating all plants and getting the goal_reward.
+    # we will compare the performance expected from either method and determine which is the one
+    # GREEDY SOLUTION:
+    #   in the gredy solution, we compare between two different types of paths:
+    #       - a path in which we go directly to a plant
+    #       - a path in which we head to a tap, load water and only then head toward the plant
+    #       * it should be noted, that the latter path type turns in due time into a path of the first type,
+    #           as soon as it has completed loading
+    #   we infer the kind of path we're working with from the {tap} variable, where it being {None} indicates
+    #   the first type of path, and we deduce that it is a path of the second type if the circumstances are reversed.
     def choose_next_action(self, state):
         """ Choose the next action given a state."""
-        possible_moves = []
-
         (robots, plants, taps, total_water_need) = state
-        capacities = self.original_game.get_capacities()
+        best_path_data = self.find_greedy_best_robot_plant(robots, plants, taps)
+        if best_path_data is None:
+            return "RESET"
+        (robot, plant, tap_cords) = best_path_data
+        (robot_id, robot_cords, load) = robot
+        (plant_cords, water_needed) = plant
 
-        directions = [((0, 1), "RIGHT"), ((0, -1), "LEFT"), ((-1, 0), "UP"), ((1, 0), "DOWN")]
-        for robot_id, (r, c), load in robots:
-            remaining_capacity = capacities[robot_id] - load
-            for (dr, dc), action_name in directions:
-                destination = (r + dr, c + dc)
-                if (all(cords != destination for (_, cords, __) in robots) and
-                    destination not in self.original_game.walls and
-                    0 <= r + dr < self.original_game.rows and
-                    0 <= c + dc < self.original_game.cols):
-                    possible_moves.append(f"{action_name}({robot_id})")
+        other_robot_cords = set(_robot[1] for _robot in robots if _robot[0] != robot_id)
+        self.update_bfs_distances(other_robot_cords)
+
+        # the order here matters a lot.
+        # it is possible that the robot is directly standing on the plant it seeks to satiate
+        # but needs to head over to the tap in order to get some water and then satiate the plant fully
+        # tbh, if the robot has any load it should POUR first.
+
+        if robot_cords == plant_cords:
             if load > 0:
-                plant_in_current_location = next(((pos, need) for (pos, need) in plants if (r, c) == pos and need > 0), None)
-                if plant_in_current_location is not None:
-                    possible_moves.append(f"POUR({robot_id})")
-            if remaining_capacity > 0:
-                tap_in_current_location = next(((pos, available_water) for (pos, available_water) in taps if (r, c) == pos and available_water > 0), None)
-                if tap_in_current_location is not None:
-                    possible_moves.append(f"LOAD({robot_id})")
-        return np.random.choice(np.array(possible_moves))
+                return f"POUR({robot_id})"
+
+        if tap_cords is not None:
+            if robot_cords == tap_cords:
+                return f"LOAD({robot_id})"
+            action_name = self.get_movement_action_in_path(robot_cords, tap_cords)
+            return f"{action_name}({robot_id})"
+
+        # we need to get to the plant
+        action_name = self.get_movement_action_in_path(robot_cords, plant_cords)
+        return f"{action_name}({robot_id})"
+
+    #def choose_next_action(self, state):
+    #    """ Choose the next action given a state."""
+    #    possible_moves = []
+
+    #    (robots, plants, taps, total_water_need) = state
+    #    capacities = self.original_game.get_capacities()
+
+    #    directions = [((0, 1), "RIGHT"), ((0, -1), "LEFT"), ((-1, 0), "UP"), ((1, 0), "DOWN")]
+    #    for robot_id, (r, c), load in robots:
+    #        remaining_capacity = capacities[robot_id] - load
+    #        for (dr, dc), action_name in directions:
+    #            destination = (r + dr, c + dc)
+    #            if (all(cords != destination for (_, cords, __) in robots) and
+    #                destination not in self.original_game.walls and
+    #                0 <= r + dr < self.original_game.rows and
+    #                0 <= c + dc < self.original_game.cols):
+    #                possible_moves.append(f"{action_name}({robot_id})")
+    #        if load > 0:
+    #            plant_in_current_location = next(((pos, need) for (pos, need) in plants if (r, c) == pos and need > 0), None)
+    #            if plant_in_current_location is not None:
+    #                possible_moves.append(f"POUR({robot_id})")
+    #        if remaining_capacity > 0:
+    #            tap_in_current_location = next(((pos, available_water) for (pos, available_water) in taps if (r, c) == pos and available_water > 0), None)
+    #            if tap_in_current_location is not None:
+    #                possible_moves.append(f"LOAD({robot_id})")
+    #    return np.random.choice(np.array(possible_moves))
 
     def calc_mean_steps(self, src: Cords, dst: Cords, success_rate: float):
         (x_1, x_2) = src
@@ -226,7 +269,6 @@ class Controller:
             (robot_id, robot_cords, load) = robot
             other_robots = list(_robot for _robot in robots if _robot[0] != robot_id)
             for plant in plants:
-                (plant_cords, water_needed) = plant
                 (mean_reward_per_step_for_path, tap_cords) = self.eval_robot_plant(robot, plant, taps, other_robots)
                 if max_mean_reward_per_step_for_path < mean_reward_per_step_for_path:
                     max_mean_reward_per_step_for_path = mean_reward_per_step_for_path
@@ -237,3 +279,15 @@ class Controller:
             # get random action
             return None
         return (max_robot, max_plant, max_tap_cords)
+
+    def get_movement_action_in_path(self, src: Cords, dest: Cords):
+        bfs_path = self.bfs_paths.get((dest, src), None)
+        if bfs_path is None:
+            raise Exception(f"Path from {src} to {dest} does not exist in self.bfs_paths")
+
+        directions = [((0, 1), "RIGHT"), ((0, -1), "LEFT"), ((-1, 0), "UP"), ((1, 0), "DOWN")]
+        (r, c) = src
+        for (dr, dc), action_name in directions:
+            potential_next_step = (r + dr, c + dc)
+            if potential_next_step in bfs_path:
+                return action_name
