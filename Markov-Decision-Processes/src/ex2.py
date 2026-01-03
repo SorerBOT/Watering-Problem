@@ -1,4 +1,3 @@
-from re import L
 import ext_plant
 import numpy as np
 from collections import deque
@@ -23,6 +22,11 @@ class Controller:
         self.bfs_paths = {}
         self.bfs_distances = {}
         self.plant_rewards = dict([(plant_cords, sum(self.original_game._plants_reward[plant_cords]) / len(self.original_game._plants_reward[plant_cords])) for plant_cords in game.plants])
+        self.best_run_length = 0
+        self.best_run_mean_reward_per_step = 0
+        self.current_run_mean_reward = 0
+        self.current_run_length = 0
+        self.is_in_run = False
  
     # In general, we want to consider both a greedy solution, oriented towards short term gains
     # and a more strategical solution, aimed at satiating all plants and getting the goal_reward.
@@ -37,16 +41,32 @@ class Controller:
     #   the first type of path, and we deduce that it is a path of the second type if the circumstances are reversed.
     def choose_next_action(self, state):
         """ Choose the next action given a state."""
+        if not self.is_in_run:
+            self.is_in_run = True
+            self.current_run_mean_reward = 0
+            self.current_run_length = 1
+
+        if self.is_in_run:
+            self.current_run_length += 1
+            
         (robots, plants, taps, total_water_need) = state
         non_empty_taps = [tap for tap in taps if tap[1] > 0]
         non_empty_plants = [plant for plant in plants if plant[1] > 0]
         total_robot_load = sum(robot[2] for robot in robots)
         if total_robot_load == 0 and len(non_empty_taps) == 0:
+            self.is_in_run = False
             return "RESET"
         best_path_data = self.find_greedy_best_robot_plant(robots, non_empty_plants, non_empty_taps)
         if best_path_data is None:
+            self.is_in_run = False
             return "RESET"
-        (robot, plant, tap_cords) = best_path_data
+        (robot, plant, tap_cords, mean_reward_per_step) = best_path_data
+
+        if (mean_reward_per_step < self.best_run_mean_reward_per_step
+            and self.best_run_length <= self.original_game.get_max_steps() - self.original_game.get_current_steps()):
+            self.is_in_run = False
+            return "RESET"
+
         (robot_id, robot_cords, load) = robot
         (plant_cords, water_needed) = plant
 
@@ -60,6 +80,8 @@ class Controller:
 
         if robot_cords == plant_cords:
             if load > 0:
+                self.current_run_mean_reward += self.get_mean_reward_for_pour(robot_id, robot_cords)
+                self.update_best_run()
                 return f"POUR({robot_id})"
 
         if tap_cords is not None:
@@ -71,6 +93,25 @@ class Controller:
         # we need to get to the plant
         action_name = self.get_movement_action_in_path(robot_cords, plant_cords)
         return f"{action_name}({robot_id})"
+
+    def get_mean_reward_for_pour(self, robot_id, robot_cords):
+        plant_mean_reward_per_water_unit = self.plant_rewards[robot_cords]
+        success_rate = self.original_game._robot_chosen_action_prob[robot_id]
+        return success_rate * plant_mean_reward_per_water_unit
+
+    def update_best_run(self):
+        if self.current_run_length == 0 or self.current_run_mean_reward == 0:
+            return
+
+        current_run_mean_reward_per_step = self.current_run_mean_reward / self.current_run_length
+        remaining_horizon = self.original_game.get_max_steps() - self.original_game.get_current_steps()
+
+        is_best_run_too_long_for_horizon = remaining_horizon < self.best_run_length
+        is_current_run_reward_higher = current_run_mean_reward_per_step > self.best_run_mean_reward_per_step
+        is_possible_to_repeat_current_run = self.current_run_length <= remaining_horizon
+        if ((is_current_run_reward_higher or is_best_run_too_long_for_horizon) and is_possible_to_repeat_current_run):
+            self.best_run_length = self.current_run_length
+            self.best_run_mean_reward_per_step = current_run_mean_reward_per_step
 
     #def choose_next_action(self, state):
     #    """ Choose the next action given a state."""
@@ -293,7 +334,7 @@ class Controller:
         if max_mean_reward_per_step_for_path <= 0 or max_plant is None or max_robot is None:
             # get random action
             return None
-        return (max_robot, max_plant, max_tap_cords)
+        return (max_robot, max_plant, max_tap_cords, max_mean_reward_per_step_for_path)
 
     def get_movement_action_in_path(self, src: Cords, dest: Cords):
         bfs_path = self.bfs_paths.get((dest, src), None)
