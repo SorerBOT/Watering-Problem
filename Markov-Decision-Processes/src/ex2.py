@@ -44,6 +44,8 @@ class Controller:
         if not self.is_in_run:
             self.is_in_run = True
             self.current_run_mean_reward = 0
+            # The per-run-statistics are only relevant in terms of yield management, which is in other words the study of when should one reset.
+            # for this reason, I pertain the "RESET" move to one of the moves associated with each run, and hence effecting its final {best_run_mean_reward_per_step}
             self.current_run_length = 1
 
         if self.is_in_run:
