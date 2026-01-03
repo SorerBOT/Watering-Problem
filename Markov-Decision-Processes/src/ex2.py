@@ -185,10 +185,8 @@ class Controller:
 # Returning to the second case, I simply note the mean amount of steps required to reach the plant, and the amount of load the robot can pour on the plant (depends on the amount of water it carries, and on the water needed by the plant)
 # then, I calculate the reward per step just as I had previously done.
 
-    def eval_robot_plant(self, robot: Robot, plant: Plant, taps: list[Tap], other_robots: list[Robot]):
-        # Setting up BFS distances
-        other_robot_cords = set((robot[1] for robot in other_robots))
-        self.update_bfs_distances(other_robot_cords)
+    def eval_robot_plant(self, robot: Robot, plant: Plant, taps: list[Tap]):
+        # I set up the BFS before calling eval_robot_plant
 
         # Getting remaining horizon
         remaining_horizon = self.original_game.get_max_steps() - self.original_game.get_current_steps()
@@ -282,8 +280,11 @@ class Controller:
         for robot in robots:
             (robot_id, robot_cords, load) = robot
             other_robots = list(_robot for _robot in robots if _robot[0] != robot_id)
+            other_robot_cords = set((robot[1] for robot in other_robots))
+            self.update_bfs_distances(other_robot_cords)
+
             for plant in plants:
-                (mean_reward_per_step_for_path, tap_cords) = self.eval_robot_plant(robot, plant, taps, other_robots)
+                (mean_reward_per_step_for_path, tap_cords) = self.eval_robot_plant(robot, plant, taps)
                 if max_mean_reward_per_step_for_path < mean_reward_per_step_for_path:
                     max_mean_reward_per_step_for_path = mean_reward_per_step_for_path
                     max_tap_cords = tap_cords
