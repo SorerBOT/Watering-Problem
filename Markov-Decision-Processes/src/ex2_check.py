@@ -80,7 +80,7 @@ def main():
     n_runs = 30
     # Fix horizon
     total_reward = 0.0
-    problems = [problem_pdf,problem_pdf2,problem_pdf3]
+    problems = [problem_pdf]
     for problem in problems:
         total_reward = 0.0
         for seed in range(n_runs):

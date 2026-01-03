@@ -95,7 +95,7 @@ class Controller:
 
     def calc_mean_steps(self, src: Cords, dst: Cords, success_rate: float):
         (x_1, x_2) = src
-        (y_1, y_2) = dst;
+        (y_1, y_2) = dst
        
         distance = self.bfs_distances.get((dst, src), float('inf'))
         # corrisor situation
@@ -123,8 +123,10 @@ class Controller:
         return distance / success_rate
         
 
-    def bfs(self, cords: Cords, walls: set[Cords]): # accepts a list, as we may have several src points (all plants to whatever taps, but single tap to whatever point)
+    def bfs(self, cords: Cords, walls: set[Cords]):
         """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
+        if cords in walls:
+            return
         visited_nodes: set[tuple[int, int]] = set({ cords }) 
         queue = deque()
 
@@ -154,8 +156,10 @@ class Controller:
 
     def update_bfs_distances(self, extra_walls: set[Cords]):
         total_walls = self.original_game.walls.union(extra_walls)
+        self.bfs_distances = {}
+        self.bfs_paths = {}
         for cords in self.original_game.taps:
-            self.bfs(cords, self.original_game.walls.union(total_walls))
+            self.bfs(cords, total_walls)
         for cords in self.original_game.plants:
             self.bfs(cords, total_walls)
 
@@ -201,49 +205,54 @@ class Controller:
         max_mean_reward_per_step_for_path = -float('inf')
         # Path going through a tap
         max_tap_cords = None
-        for tap_cords, tap_available_water in taps:
-            # M := the amount of water we can LOAD:
-            #   - can't be more than the tap has
-            #   - can't be more than the plant needs (?) perhaps this is wrong
-            #   - can't be more than the robot can carry
-            #   - can't be more than the horizon allows
-            #           this one is quite intricate, what does it mean for the horizon to allow something?
-            #           the idea is that we are bound to take {mean_steps_to_tap_then_plant} steps no matter what
-            #           this leaves us with {remaining_horizon} - {mean_steps_to_tap_then_plant} steps
-            #           we ideally want to pour all the {load} to pour, before loading anything from a tap
-            #           so we are left with: {remaining_horizon} - {mean_steps_to_tap_then_plant} - {load} steps
-            #           these steps must be divided into two groups:
-            #               - LOAD steps
-            #               - POUR steps
-            #           we'd hate to use extra LOAD steps, then not use POUR on everything
-            #           the mean load we get per LOAD operation is success_rate.
-            #           after {K} LOAD operations, we're left with {K} * {success_rate} amount of {load}
-            #           and so we want to ascertain that the {remaining_horizon} after the extra LOAD operations
-            #           does not fall from {K} * {success_rate}, meaning
-            #           {K} * {success_rate} < {remaining_horizon} - {mean_steps_to_tap_then_plant} - {load} - {K}
-            #       =>  {K} * {1 + success_rate} < {remaining_horizon} - {mean_steps_to_tap_then_plant} - {load}
-            #       =>  {K} < ({remaining_horizon} - {mean_steps_to_tap_then_plant} - {load}) / (1 + {success_rate})
-            #           and from here:
-            #       additionally, {K} is the amount of load operations, {M}, is the actual load. The relationship between them is of course {M} = {K} * success_rate
-            #   - can't be more than (({remaining_horizon} - {mean_steps_to_tap_then_plant} - {load}) / (1 + {success_rate})) * success_rate
+        if remaining_capacity > 0:
+            for tap_cords, tap_available_water in taps:
+                # M := the amount of water we can LOAD:
+                #   - can't be more than the tap has
+                #   - can't be more than the plant needs (?) perhaps this is wrong
+                #   - can't be more than the robot can carry
+                #   - can't be more than the horizon allows
+                #           this one is quite intricate, what does it mean for the horizon to allow something?
+                #           the idea is that we are bound to take {mean_steps_to_tap_then_plant} steps no matter what
+                #           this leaves us with {remaining_horizon} - {mean_steps_to_tap_then_plant} steps
+                #           we ideally want to pour all the {load} to pour, before loading anything from a tap
+                #           so we are left with: {remaining_horizon} - {mean_steps_to_tap_then_plant} - {load} steps
+                #           these steps must be divided into two groups:
+                #               - LOAD steps
+                #               - POUR steps
+                #           we'd hate to use extra LOAD steps, then not use POUR on everything
+                #           the mean load we get per LOAD operation is success_rate.
+                #           after {K} LOAD operations, we're left with {K} * {success_rate} amount of {load}
+                #           and so we want to ascertain that the {remaining_horizon} after the extra LOAD operations
+                #           does not fall from {K} * {success_rate}, meaning
+                #           {K} * {success_rate} < {remaining_horizon} - {mean_steps_to_tap_then_plant} - {load} - {K}
+                #       =>  {K} * {1 + success_rate} < {remaining_horizon} - {mean_steps_to_tap_then_plant} - {load}
+                #       =>  {K} < ({remaining_horizon} - {mean_steps_to_tap_then_plant} - {load}) / (1 + {success_rate})
+                #           and from here:
+                #       additionally, {K} is the amount of load operations, {M}, is the actual load. The relationship between them is of course {M} = {K} * success_rate
+                #   - can't be more than (({remaining_horizon} - {mean_steps_to_tap_then_plant} - {load}) / (1 + {success_rate})) * success_rate
 
-            mean_steps_to_tap_then_plant = self.calc_mean_steps(tap_cords, robot_cords, success_rate) + self.calc_mean_steps(tap_cords, plant_cords, success_rate)
-            horizon_load_steps_constraint = (remaining_horizon - mean_steps_to_tap_then_plant - load) / (1 + success_rate)
-            horizon_actual_load_constraint = horizon_load_steps_constraint * success_rate
-            M = min(tap_available_water, mean_water_missing_to_satiate, remaining_capacity, horizon_actual_load_constraint)
-            if M <= 0: # a case where we don't need / cannot take additional water is handlded below, where we go directly to the plant without visiting any taps along the way
-                continue
-            mean_poured_units = min(M + load, mean_water_needed_to_satiate_plant) # including SPILL
-            mean_steps_for_path = (M / success_rate) + mean_steps_to_tap_then_plant + mean_poured_units
-            mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
-            mean_reward_per_step_for_path = mean_reward_for_path / mean_steps_for_path
-            if mean_reward_per_step_for_path > max_mean_reward_per_step_for_path:
-                max_tap_cords = tap_cords
-                max_mean_reward_per_step_for_path = mean_reward_per_step_for_path
+                mean_steps_to_tap_then_plant = self.calc_mean_steps(robot_cords, tap_cords, success_rate) + self.calc_mean_steps(tap_cords, plant_cords, success_rate)
+                if mean_steps_to_tap_then_plant == float('inf'):
+                    continue
+                horizon_load_steps_constraint = (remaining_horizon - mean_steps_to_tap_then_plant - load) / (1 + success_rate)
+                horizon_actual_load_constraint = horizon_load_steps_constraint * success_rate
+                M = min(tap_available_water, mean_water_missing_to_satiate, remaining_capacity, horizon_actual_load_constraint)
+                if M <= 0: # a case where we don't need / cannot take additional water is handlded below, where we go directly to the plant without visiting any taps along the way
+                    continue
+                mean_poured_units = min(M + load, mean_water_needed_to_satiate_plant) # including SPILL
+                mean_steps_for_path = (M / success_rate) + mean_steps_to_tap_then_plant + mean_poured_units
+                mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
+                mean_reward_per_step_for_path = mean_reward_for_path / mean_steps_for_path
+                if mean_reward_per_step_for_path > max_mean_reward_per_step_for_path:
+                    max_tap_cords = tap_cords
+                    max_mean_reward_per_step_for_path = mean_reward_per_step_for_path
 
         # Direct Path
         if load > 0:
-            mean_steps_to_plant = self.calc_mean_steps(plant_cords, robot_cords, success_rate)
+            mean_steps_to_plant = self.calc_mean_steps(robot_cords, plant_cords, success_rate)
+            if mean_steps_to_plant == float('inf'):
+                return (max_mean_reward_per_step_for_path, max_tap_cords)
             mean_poured_units = min(load, mean_water_needed_to_satiate_plant, remaining_horizon - mean_steps_to_plant) # including SPILL, and accounting for the remaining horizon.
             mean_steps_for_path = mean_steps_to_plant + mean_poured_units
             mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
