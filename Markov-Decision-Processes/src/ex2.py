@@ -164,31 +164,40 @@ class Controller:
         (y_1, y_2) = dst
        
         distance = self.bfs_distances.get((dst, src), float('inf'))
-        # corrisor situation
-        # In case of failure, we have 5 options, moving UP, DOWN, RIGHT, LEFT and staying in place.
-        # In the corridor situation 3/4 directions drift us away, 1 direction advances us
-        # and staying in place is neutral. So the expectation of steps on failure is:
-        # 3 * 0.2 * (-1) + 0.2 + 0.2 * 0 = -0.4
+        # corridor situation
+        # In case of failure, we have 4 options, moving UP, DOWN, RIGHT, LEFT and staying ***MINUS*** the wanted operation.
+        # In the corridor situation 3/4 directions drift us away, and staying in place is neutral.
+        # So the expectation of steps on failure is:
+        # 3 * 0.2 * (-1) + 0.2 * 0 = -0.6
         # Now the total expectation of a step (including both failure and success), is:
-        # success_rate * 1 - 0.4 *(1 - success_rate) = 1.4 * success_rate - 0.4
-        # and from here we would need distance / (1.4 * success_rate - 0.4) steps to reach dst.
+        # success_rate * 1 - 0.6 * (1 - success_rate) = 1.6 * success_rate - 0.6
+        # and from here we would need distance / (1.6 * success_rate - 0.6) steps to reach dst.
         # this is a direct deduction from Wald's theorem: https://en.wikipedia.org/wiki/Wald%27s_equation
+
         if (x_1 == y_1 or x_2 == y_2):
-            return distance / (1.4 * success_rate - 0.4)
+            return distance / (1.6 * success_rate - 0.6)
 
         # non-corridor situation, we need to circle around a block
-        # We once more have 5 options, moving in one of the four directions, and staying in place.
-        # the difference is that in this case, two of the four directions advance us, and 2 harm us, while staying in place is neutral.
+        # We once more have 4 options (on failure), moving in one of the three remaining directions, and staying in place.
+        # The difference is that in this case, one of the three directions advances us,
+        # two of them harm us, and staying in place is neutral.
         # the above yields the following EXPECTATION of advancement per failure:
-        #   E = 2 * 0.2 * (-1) + 2 * 0.2 * 1 + 0.2 * 0 = 0
-        # this means that the EXPECTED advancement, on failure is 0.
+        #   E = 2 * 0.2 * (-1) + 1 * 0.2 * 1 + 0.2 * 0 = -0.2
+        # this means that the EXPECTED advancement, on failure is -0.2.
         # from here, the mean advancement in general is:
-        # E = success_rate * 1 + (1 - success_rate) * 0 = success_rate
+        # E = success_rate * 1 + (1 - success_rate) * (-1) * 0.2 = 1.2 * success_rate - 0.2
         # and for this reason, using Wald's Theorem or common sense, we find that:
-        # E[steps_required] = distance / success_rate
-        return distance / success_rate
-        
+        # E[steps_required] = distance / (1.2 * success_rate - 0.2) 
+        return distance / (1.2 * success_rate - 0.2)
 
+
+    # the only way in which this BFS function is different than normal BFS
+    # is that we favour paths that are not straihgt, but instead include ZigZags.
+    # the reason due to which we favour such paths, is that failing to step in
+    # the correct direction in such paths, can lead to an accidental movement which advances
+    # us in the path, even though we did not directly wish to reach it.
+    # for example, in a map without obstacles, moving from (0,0) towards (3,3) by going to
+    # (1,0) is just the same as going to (0,1), and so we'd favour paths that have the most ZigZag-ed-ness
     def bfs(self, cords: Cords, walls: set[Cords]):
         """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
         if cords in walls:
@@ -374,17 +383,28 @@ class Controller:
             return None
         return (max_robot, max_plant, max_tap_cords, max_mean_reward_per_step_for_path)
 
-    def get_movement_action_in_path(self, src: Cords, dest: Cords):
-        bfs_path = self.bfs_paths.get((dest, src), None)
-        if bfs_path is None:
-            raise Exception(f"Path from {src} to {dest} does not exist in self.bfs_paths")
+    def get_movement_action_in_path(self, src: Cords, dest: Cords) -> str | None:
+        current_distance = self.bfs_distances.get((dest, src), None)
+        if current_distance is None:
+            raise Exception(f"Path from {src} to {dest} does not exist in self.bfs_distances")
 
         directions = [((0, 1), "RIGHT"), ((0, -1), "LEFT"), ((-1, 0), "UP"), ((1, 0), "DOWN")]
-        (r, c) = src
+        (src_r, src_c) = src
+        good_next_steps = []
         for (dr, dc), action_name in directions:
-            potential_next_step = (r + dr, c + dc)
-            if potential_next_step in bfs_path:
-                return action_name
+            potential_next_step = (src_r + dr, src_c + dc)
+            next_distance = self.bfs_distances.get((dest, potential_next_step), float('inf'))
+
+            if next_distance < current_distance:
+                good_next_steps.append((potential_next_step, action_name))
+
+        (dest_r, dest_c) = dest
+        for (next_step, action) in good_next_steps:
+            (n_r, n_c) = next_step
+            if max(abs(n_r - dest_r), abs(n_c - dest_c)) < max(abs(src_r - dest_r), abs(src_c - dest_c)):
+                return action
+        (_, first_good_action) = good_next_steps[0]
+        return first_good_action
 
     def find_lookahead_best_move(self, robots: list[Robot], plants: list[Plant], taps: list[Tap]):
         max_mean_reward_per_step = -float('inf')
