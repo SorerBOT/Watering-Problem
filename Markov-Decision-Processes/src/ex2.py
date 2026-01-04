@@ -408,12 +408,9 @@ class Controller:
             # can generate a plan that's pretty unlikely to really be happen 
 
 
-# because for every robot, we consider every possible move anyways, and calculate its greedy value
-# then for every robot movement, I can calculate the movements's greedy value using the following formula:
-#   V = {success_rate} * post_move_greedy_value + (1 - {success_rate}) / 5 * greedy_value_after_going_left + (1 - {success_rate}) / 5 * greedy_value_after_going_down + (1 - {success_rate}) / 5 * greedy_value_after_going_right + (1 - {success_rate}) / 5 * greedy_value_after_going_up + (1 - {success_rate}) / 5 * greedy_value_staying_in_place
-
-
-
+            # because for every robot, we consider every possible move anyways, and calculate its greedy value
+            # then for every robot movement, I can calculate the movements's greedy value using the following formula:
+            #   V = {success_rate} * post_move_greedy_value + (1 - {success_rate}) / 5 * greedy_value_after_going_left + (1 - {success_rate}) / 5 * greedy_value_after_going_down + (1 - {success_rate}) / 5 * greedy_value_after_going_right + (1 - {success_rate}) / 5 * greedy_value_after_going_up + (1 - {success_rate}) / 5 * greedy_value_staying_in_place
             for new_robot_id, new_robot_new_cords, _ in self.get_legal_movement_actions(new_robots):
                 new_new_robots = []
                 for robot in new_robots:
