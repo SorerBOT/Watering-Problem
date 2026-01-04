@@ -1,6 +1,7 @@
 import ext_plant
 import numpy as np
 from collections import deque
+import heapq
 
 id = ["000000000"]
 
@@ -202,10 +203,12 @@ class Controller:
         """Expects the coordinates of a plant / tap, and in return calculates the minimal distance from the entity to any point lying on the map"""
         if cords in walls:
             return
-        visited_nodes: set[tuple[int, int]] = set({ cords }) 
-        queue = deque()
+        visited_nodes: set[Cords] = set() 
+        queue = []
+        heapq.heappush(queue, (0, 0, cords, (0, 0)))
 
-        queue.append(cords)
+        self.bfs_distances[(cords, cords)]  = 0
+        self.bfs_paths[(cords, cords)]      = {cords}
 
         (height, width) = self.original_game.rows, self.original_game.cols
         is_position_legal = lambda i,j: (
@@ -213,21 +216,29 @@ class Controller:
                 and (0 <= j < width)
                 and (i,j) not in walls)
 
-        self.bfs_distances[(cords, cords)]  = 0
-        self.bfs_paths[(cords, cords)]      = {cords}
         possible_actions = [(0,-1), (0,1), (-1, 0), (1,0)]
 
-        while (len(queue) > 0):
-            (node_i, node_j) = old_point = queue.pop()
-            for (d_i, d_j) in possible_actions:
-                new_point = (node_i + d_i, node_j + d_j)
-                if (is_position_legal(node_i + d_i, node_j + d_j)
-                    and not (node_i + d_i, node_j + d_j) in visited_nodes):
+        while queue:
+            dist, penalty, old_point, (last_dr, last_dc) = heapq.heappop(queue)
+            (node_r, node_c) = old_point
 
-                    queue.append(new_point)
+            if old_point in visited_nodes:
+                continue
+
+            visited_nodes.add(old_point)
+
+            for (d_r, d_c) in possible_actions:
+                new_point = (node_r + d_r, node_c + d_c)
+                if (is_position_legal(node_r + d_r, node_c + d_c)
+                    and not (node_r + d_r, node_c + d_c) in visited_nodes):
+
+                    new_penalty = penalty + (1 if last_dr == d_r or last_dc == d_c else 0)
+                    new_dist = dist + 1
+
                     self.bfs_distances[(cords, new_point)] = self.bfs_distances[(cords, old_point)] + 1
                     self.bfs_paths[(cords, new_point)] = self.bfs_paths[(cords, old_point)].union({ new_point })
-                    visited_nodes.add((node_i + d_i, node_j + d_j))
+
+                    heapq.heappush(queue, (new_dist, new_penalty, new_point, (d_r, d_c)))
 
     def update_bfs_distances(self, extra_walls: set[Cords]):
         total_walls = self.original_game.walls.union(extra_walls)
