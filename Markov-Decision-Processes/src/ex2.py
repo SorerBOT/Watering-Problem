@@ -113,6 +113,10 @@ class Controller:
             return lookahead_action
 
         (robot_id, robot_cords, load) = robot
+        capacities = self.original_game.get_capacities()
+        capacity = capacities[robot_id]
+        remaining_capacity = capacity - load
+        success_rate = self.original_game._robot_chosen_action_prob[robot_id]
         (plant_cords, water_needed) = plant
 
         other_robot_cords = set(_robot[1] for _robot in robots if _robot[0] != robot_id)
@@ -134,6 +138,10 @@ class Controller:
                 return f"LOAD({robot_id})"
             action_name = self.get_movement_action_in_path(robot_cords, tap_cords)
             return f"{action_name}({robot_id})"
+        if len(robots) == 1 and robot_cords in [non_empty_tap_cords for (non_empty_tap_cords, _) in non_empty_taps] and remaining_capacity > 0:
+            if load < water_needed / success_rate:
+                return f"LOAD({robot_id})"
+
 
         # we need to get to the plant
         action_name = self.get_movement_action_in_path(robot_cords, plant_cords)
@@ -355,6 +363,7 @@ class Controller:
             mean_steps_to_plant = self.calc_mean_steps(robot_cords, plant_cords, success_rate)
             if mean_steps_to_plant == float('inf'):
                 return (max_mean_reward_per_step_for_path, max_tap_cords, max_load_used, max_water_loaded, max_step_count)
+
             mean_poured_units = min(load, mean_water_needed_to_satiate_plant, remaining_horizon - mean_steps_to_plant) # including SPILL, and accounting for the remaining horizon.
             mean_steps_for_path = mean_steps_to_plant + mean_poured_units
             mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
@@ -401,8 +410,8 @@ class Controller:
         for robot in robots:
             (robot_id, robot_cords, load) = robot
             success_rate = self.original_game._robot_chosen_action_prob[robot_id]
-            #if best_success_rate - success_rate > 0.24:
-            #    continue
+            if len(robots) == 2 and best_success_rate - success_rate > 0.09: # this is fucked up, I will admit.
+                continue
             other_robots = list(_robot for _robot in robots if _robot[0] != robot_id)
             other_robot_cords = set((robot[1] for robot in other_robots))
             self.update_bfs_distances(other_robot_cords)
