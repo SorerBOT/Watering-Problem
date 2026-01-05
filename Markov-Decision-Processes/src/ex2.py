@@ -138,7 +138,7 @@ class Controller:
                 return f"LOAD({robot_id})"
             action_name = self.get_movement_action_in_path(robot_cords, tap_cords)
             return f"{action_name}({robot_id})"
-        if len(robots) == 1 and robot_cords in [non_empty_tap_cords for (non_empty_tap_cords, _) in non_empty_taps] and remaining_capacity > 0:
+        if len(robots) == 1 and robot_cords in [non_empty_tap_cords for (non_empty_tap_cords, _) in non_empty_taps] and remaining_capacity > 0: # should add something about the horizon here.
             if load < water_needed / success_rate:
                 return f"LOAD({robot_id})"
 
@@ -303,8 +303,8 @@ class Controller:
         (plant_cords, water_needed) = plant
         mean_water_needed_to_satiate_plant = np.ceil((water_needed / success_rate))
         mean_water_missing_to_satiate = max(0, mean_water_needed_to_satiate_plant - load)
-        plant_mean_reward_per_water_unit = self.plant_rewards[plant_cords] + goal_reward_per_water_unit
-
+        plant_mean_reward_per_water_unit = self.plant_rewards[plant_cords]
+        plant_mean_reward_per_water_unit += goal_reward_per_water_unit
         max_mean_reward_per_step_for_path = -float('inf')
         # Path going through a tap
         max_tap_cords = None
@@ -348,8 +348,11 @@ class Controller:
                 if M <= 0: # a case where we don't need / cannot take additional water is handlded below, where we go directly to the plant without visiting any taps along the way
                     continue
                 mean_poured_units = min(M + load, mean_water_needed_to_satiate_plant) # including SPILL
+                mean_successful_pours = mean_poured_units * success_rate
+                #if mean_successful_pours >= water_needed or capacity < mean_water_needed_to_satiate_plant:
+                #    plant_mean_reward_per_water_unit += goal_reward_per_water_unit
                 mean_steps_for_path = (M / success_rate) + mean_steps_to_tap_then_plant + mean_poured_units
-                mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
+                mean_reward_for_path = mean_successful_pours * plant_mean_reward_per_water_unit
                 mean_reward_per_step_for_path = mean_reward_for_path / (mean_steps_for_path + preceding_steps)
                 if mean_reward_per_step_for_path > max_mean_reward_per_step_for_path:
                     max_tap_cords = tap_cords
@@ -365,8 +368,11 @@ class Controller:
                 return (max_mean_reward_per_step_for_path, max_tap_cords, max_load_used, max_water_loaded, max_step_count)
 
             mean_poured_units = min(load, mean_water_needed_to_satiate_plant, remaining_horizon - mean_steps_to_plant) # including SPILL, and accounting for the remaining horizon.
+            mean_successful_pours = mean_poured_units * success_rate
+            #if mean_successful_pours >= water_needed or capacity < mean_water_needed_to_satiate_plant:
+            #    plant_mean_reward_per_water_unit += goal_reward_per_water_unit
+            mean_reward_for_path = mean_successful_pours * plant_mean_reward_per_water_unit
             mean_steps_for_path = mean_steps_to_plant + mean_poured_units
-            mean_reward_for_path = mean_poured_units * success_rate * plant_mean_reward_per_water_unit
             mean_reward_per_step_for_path = mean_reward_for_path / (mean_steps_for_path + preceding_steps)
             if mean_reward_per_step_for_path > max_mean_reward_per_step_for_path:
                 max_tap_cords = None # meaning we don't need to go through a tap
